@@ -310,55 +310,46 @@ class SemanticMemory(MemorySystem[str]):
             MemoryError: If deletion fails
         """
         try:
-            # Use a thread to run the blocking operation
             loop = asyncio.get_event_loop()
-            
             # Try to delete by ID
             try:
                 await loop.run_in_executor(
                     None,
-                    lambda: self.collection.delete(
-                        ids=[key]
-                    )
+                    lambda: self.collection.delete(ids=[key])
                 )
                 self.logger.debug(f"Deleted content from semantic memory: {key}")
                 return True
-                
             except Exception:
-                # If deleting by ID fails, check if it exists by metadata key
+                # If deleting by ID fails, try by metadata key
                 try:
                     results = await loop.run_in_executor(
                         None,
                         lambda: self.collection.query(
-                            query_texts=[""],  # Empty query text
+                            query_texts=[""],
                             where={"key": key},
                             n_results=1,
-                            include=["ids"]
+                            include=["documents", "metadatas"]
                         )
                     )
-                    
-                    if results and results["ids"] and len(results["ids"][0]) > 0:
-                        # If found by metadata key, delete by ID
+                    ids_to_delete = []
+                    if results and results.get("metadatas") and len(results["metadatas"][0]) > 0:
+                        for meta in results["metadatas"][0]:
+                            if "key" in meta:
+                                ids_to_delete.append(meta["key"])
+                    if ids_to_delete:
                         await loop.run_in_executor(
                             None,
-                            lambda: self.collection.delete(
-                                ids=results["ids"][0]
-                            )
+                            lambda: self.collection.delete(ids=ids_to_delete)
                         )
                         self.logger.debug(f"Deleted content from semantic memory by metadata key: {key}")
                         return True
-                
                 except Exception:
-                    # Both methods failed
                     pass
-            
             return False
-            
         except Exception as e:
             self.logger.exception(f"Failed to delete content from semantic memory: {key}")
             raise MemoryError(f"Failed to delete from semantic memory: {str(e)}")
     
-    # Add a method to delete content based on a filter
     async def delete_where(self, filter_dict: Dict[str, Any]) -> bool:
         """
         Delete content from semantic memory based on a filter.
@@ -373,38 +364,33 @@ class SemanticMemory(MemorySystem[str]):
             MemoryError: If deletion fails
         """
         try:
-            # Use a thread to run the blocking operation
             loop = asyncio.get_event_loop()
-            
-            # Find documents matching the filter
             results = await loop.run_in_executor(
                 None,
                 lambda: self.collection.query(
-                    query_texts=[""],  # Empty query text
+                    query_texts=[""],
                     where=filter_dict,
-                    n_results=100,  # Get a large number to make sure we get all
-                    include=["ids"]
+                    n_results=100,
+                    include=["documents", "metadatas"]
                 )
             )
-            
-            # If documents were found, delete them
-            if results and results["ids"] and len(results["ids"][0]) > 0:
-                # Delete by IDs
+            ids_to_delete = []
+            if results and results.get("metadatas") and len(results["metadatas"][0]) > 0:
+                for meta in results["metadatas"][0]:
+                    if "key" in meta:
+                        ids_to_delete.append(meta["key"])
+            if ids_to_delete:
                 await loop.run_in_executor(
                     None,
-                    lambda: self.collection.delete(
-                        ids=results["ids"][0]
-                    )
+                    lambda: self.collection.delete(ids=ids_to_delete)
                 )
                 self.logger.debug(f"Deleted content from semantic memory by filter: {filter_dict}")
                 return True
-            
             return False
-            
         except Exception as e:
             self.logger.exception(f"Failed to delete content from semantic memory by filter: {filter_dict}")
             raise MemoryError(f"Failed to delete from semantic memory: {str(e)}")
-    
+
     @log_execution_time(logger)
     async def clear(self, **kwargs) -> None:
         """
