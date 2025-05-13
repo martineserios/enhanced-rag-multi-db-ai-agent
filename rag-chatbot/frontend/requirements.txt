@@ -1,0 +1,14 @@
+# filepath: frontend/requirements.txt
+
+# Web Framework & UI
+streamlit>=1.31.0
+plotly>=5.18.0
+
+# Data Processing & Analysis
+pandas>=2.1.0
+
+# HTTP & API
+requests>=2.31.0
+
+# Utilities & Environment
+python-dotenv>=1.0.0
