@@ -30,7 +30,6 @@ venv/
 env/
 ENV/
 .venv/
-.env/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -41,6 +40,8 @@ ENV/
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+.env
+!.env.example
 
 # Unit test / coverage reports
 htmlcov/
