@@ -78,12 +78,12 @@ provider_info = st.session_state.providers_info
 available_providers = provider_info.get("providers", ["openai"])
 
 # Default to first provider if available, else 'openai'
-default_provider = available_providers[0] if available_providers else "openai"
+default_provider = list(available_providers)[0] if available_providers else "openai"
 
 selected_provider = st.sidebar.selectbox(
     "LLM Provider",
-    options=available_providers,
-    index=available_providers.index(default_provider) if default_provider in available_providers else 0
+    options=list(available_providers),
+    index=list(available_providers).index(default_provider) if default_provider in list(available_providers) else 0
 )
 
 # Data source options
