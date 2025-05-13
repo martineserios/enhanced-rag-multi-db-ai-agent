@@ -83,7 +83,7 @@ coverage.xml
 *.log
 
 # dotenv environment variables
-.env.*
+.env
 
 # Frontend/node (if present)
 node_modules/
