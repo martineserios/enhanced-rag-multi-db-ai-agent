@@ -82,6 +82,7 @@ with st.form("upload_form"):
 # Display documents table
 st.markdown("### Document Library")
 documents = fetch_documents()
+st.write("Fetched documents:", documents)
 
 if documents:
     # Convert to DataFrame for display
@@ -90,7 +91,7 @@ if documents:
     # Format timestamps if they exist
     if "upload_date" in df.columns:
         df["upload_date"] = df["upload_date"].apply(
-            lambda x: datetime.fromtimestamp(x).strftime("%Y-%m-%d %H:%M:%S")
+            lambda x: datetime.fromtimestamp(x).strftime("%Y-%m-%d %H:%M:%S") if isinstance(x, (int, float)) else x
         )
     
     # Display the table

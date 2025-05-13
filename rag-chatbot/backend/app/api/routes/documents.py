@@ -174,6 +174,7 @@ async def upload_document(
                     # Sanitize metadata before storing
                     sanitized_metadata = sanitize_metadata(chunk_metadata)
                     # Store in semantic memory
+                    logger.info(f"Storing chunk in semantic memory:", extra={"metadata": sanitized_metadata})
                     await memory_manager.store_memory(
                         memory_type="semantic",
                         content=chunk.page_content,
@@ -275,6 +276,7 @@ async def list_documents(
             limit=limit * 10  # Get more results to account for chunks
         )
         
+        logger.info(f"Results from semantic memory search:", extra={"results": results})
         # Process results to get unique documents
         for result in results:
             if isinstance(result, dict) and "metadata" in result:

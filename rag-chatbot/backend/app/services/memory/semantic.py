@@ -461,22 +461,22 @@ class SemanticMemory(MemorySystem[str]):
             True if the connection is healthy, False otherwise
         """
         try:
-            # Try to make a simple API call to ChromaDB
+            self.logger.info(f"ChromaDB health check: host={self.chroma_host}, port={self.chroma_port}")
             url = f"http://{self.chroma_host}:{self.chroma_port}/api/v1/heartbeat"
-            
+            self.logger.info(f"ChromaDB health check URL: {url}")
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, timeout=5.0)
-                
+                self.logger.info(f"ChromaDB health check response: status={response.status_code}, body={response.text}")
                 if response.status_code == 200:
                     return True
                 else:
-                    self.logger.warning(
-                        f"ChromaDB health check failed with status code: {response.status_code}"
+                    self.logger.error(
+                        f"ChromaDB health check failed: status={response.status_code}, body={response.text}"
                     )
                     return False
                 
         except Exception as e:
-            self.logger.error(f"ChromaDB health check failed: {str(e)}")
+            self.logger.error(f"ChromaDB health check exception: {str(e)}", exc_info=True)
             return False
     
     async def close(self) -> None:
