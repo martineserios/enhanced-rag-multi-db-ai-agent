@@ -448,7 +448,8 @@ class SemanticMemory(MemorySystem[str]):
         """
         try:
             self.logger.info(f"ChromaDB health check: host={self.chroma_host}, port={self.chroma_port}")
-            url = f"http://{self.chroma_host}:{self.chroma_port}/api/v1/heartbeat"
+            # Updated to use v2 API endpoint
+            url = f"http://{self.chroma_host}:{self.chroma_port}/api/v2/heartbeat"
             self.logger.info(f"ChromaDB health check URL: {url}")
             async with httpx.AsyncClient() as client:
                 response = await client.get(url, timeout=5.0)

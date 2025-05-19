@@ -19,7 +19,7 @@ from app.core.exceptions import (
     LLMError, LLMProviderError, LLMRequestError, LLMRateLimitError
 )
 from app.config import Settings
-from app.services.llm.base import LLMService
+from app.services.llm.base import LLMService, ModelType
 
 
 logger = get_logger(__name__)
@@ -28,11 +28,12 @@ class GroqService(LLMService):
     """
     Groq implementation of the LLM service.
     
-    This class:
-    1. Connects to Groq's API
-    2. Manages API key authentication
-    3. Handles token counting and rate limiting
-    4. Provides access to LLM models like Llama hosted on Groq
+    This class provides access to Groq-hosted models through the Groq API.
+    
+    Attributes:
+        client: Groq API client
+        model: Currently configured model
+        tokenizer: Tokenizer for counting tokens
     """
     
     def __init__(self, settings: Settings):
@@ -45,7 +46,87 @@ class GroqService(LLMService):
         Raises:
             LLMProviderError: If Groq API key is missing or invalid
         """
-        super().__init__("groq", settings)
+        super().__init__(settings)
+        
+        # Configure retry settings
+        self.retry_attempts = getattr(settings, 'llm_retry_attempts', 3)
+        self.retry_delay = getattr(settings, 'llm_retry_delay', 1.0)  # seconds
+        
+        # Validate provider settings
+        self._validate_provider_settings()
+        
+        # Initialize client
+        try:
+            self.client = AsyncGroq(api_key=self.settings.groq_api_key)
+            
+            # Model settings
+            self.model = self.settings.groq_model
+            
+            # Use tiktoken for approximately counting tokens
+            try:
+                self.tokenizer = tiktoken.encoding_for_model("cl100k_base")
+            except KeyError:
+                self.tokenizer = tiktoken.get_encoding("cl100k_base")
+            
+            self.logger.info(
+                f"Initialized Groq service with model: {self.model}, "
+                f"retry_attempts={self.retry_attempts}, retry_delay={self.retry_delay}s"
+            )
+            
+        except Exception as e:
+            self.logger.exception("Failed to initialize Groq client")
+            raise LLMProviderError(f"Groq client initialization failed: {str(e)}")
+    
+    def _validate_provider_settings(self) -> None:
+        """
+        Validate Groq provider settings.
+        
+        Raises:
+            LLMProviderError: If required settings are missing or invalid
+        """
+        if not self.settings.groq_api_key:
+            raise LLMProviderError("Groq API key is required")
+        if not self.settings.groq_model:
+            raise LLMProviderError("Groq model is required")
+    
+    async def get_model_info(self, model_type: ModelType) -> Dict[str, Any]:
+        """
+        Get information about available Groq models.
+        
+        Args:
+            model_type: Type of model to get info for
+            
+        Returns:
+            Dictionary containing model information
+            
+        Raises:
+            LLMProviderError: If model information cannot be retrieved
+        """
+        try:
+            # Get model list from API
+            models = await self.client.models.list()
+            
+            # Filter by model type
+            if model_type == ModelType.CHAT:
+                return {
+                    "models": [
+                        m for m in models if m.id.startswith("llama")
+                    ]
+                }
+            elif model_type == ModelType.TEXT:
+                return {
+                    "models": [
+                        m for m in models if m.id.startswith("llama")
+                    ]
+                }
+            elif model_type == ModelType.EMBEDDING:
+                return {"models": []}  # Groq doesn't support embeddings yet
+            
+            return {"models": []}
+            
+        except Exception as e:
+            self.logger.exception("Failed to get model information")
+            raise LLMProviderError(f"Failed to get model information: {str(e)}")
         
         # Check for API key
         if not settings.groq_api_key:
@@ -74,8 +155,9 @@ class GroqService(LLMService):
     async def generate_text(
         self, 
         prompt: str,
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
         temperature: float = 0.7,
-        max_tokens: int = 1000,
         **kwargs
     ) -> str:
         """
@@ -83,8 +165,9 @@ class GroqService(LLMService):
         
         Args:
             prompt: The prompt to generate text from
-            temperature: Controls randomness (0.0 to 1.0)
+            model: The model to use for generation
             max_tokens: Maximum number of tokens to generate
+            temperature: Controls randomness (0.0 to 1.0)
             **kwargs: Additional parameters for the API
             
         Returns:
@@ -95,12 +178,16 @@ class GroqService(LLMService):
             LLMRateLimitError: If rate limits are exceeded
         """
         try:
+            # Use provided model or default
+            model = model or self.model
+            
             # Create messages from prompt for compatibility with chat models
             messages = [{"role": "user", "content": prompt}]
             
             # Generate response using the chat API
             return await self.generate_chat_response(
                 messages=messages,
+                model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 **kwargs
@@ -116,8 +203,9 @@ class GroqService(LLMService):
     async def generate_chat_response(
         self,
         messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
         temperature: float = 0.7,
-        max_tokens: int = 1000,
         **kwargs
     ) -> str:
         """
@@ -125,8 +213,9 @@ class GroqService(LLMService):
         
         Args:
             messages: List of message dictionaries with 'role' and 'content'
-            temperature: Controls randomness (0.0 to 1.0)
+            model: The model to use for generation
             max_tokens: Maximum number of tokens to generate
+            temperature: Controls randomness (0.0 to 1.0)
             **kwargs: Additional parameters for the API
             
         Returns:
@@ -136,52 +225,46 @@ class GroqService(LLMService):
             LLMRequestError: If the generation fails
             LLMRateLimitError: If rate limits are exceeded
         """
+        # Use provided model or default
+        model = model or self.model
+        
+        # Filter out any messages with empty content
+        filtered_messages = [
+            msg for msg in messages 
+            if msg.get("content") and msg.get("role") in ["user", "assistant", "system"]
+        ]
+        
+        # Add system message if not present
+        system_message = kwargs.pop("system_message", None)
+        if system_message and not any(msg.get("role") == "system" for msg in filtered_messages):
+            filtered_messages.insert(0, {
+                "role": "system",
+                "content": system_message
+            })
+        
+        # Create a timeout
+        timeout = kwargs.pop("timeout", self.request_timeout)
+        
         try:
-            # Filter out any unexpected keys in messages
-            filtered_messages = []
-            system_message = None
-            
-            for message in messages:
-                role = message["role"]
-                content = message["content"]
-                
-                if role == "system":
-                    system_message = content
-                else:
-                    filtered_message = {
-                        "role": role,
-                        "content": content
-                    }
-                    filtered_messages.append(filtered_message)
-            
-            # If we have a system message, add it as the first message
-            if system_message:
-                filtered_messages.insert(0, {
-                    "role": "system",
-                    "content": system_message
-                })
-            
-            # Create a timeout
-            timeout = kwargs.pop("timeout", self.request_timeout)
-            
-            # Make the API call
-            response = await asyncio.wait_for(
-                self.client.chat.completions.create(
-                    model=self.model,
-                    messages=filtered_messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    **kwargs
-                ),
-                timeout=timeout
+            # Make the API call with retry logic
+            response = await self._execute_with_retry(
+                self.client.chat.completions.create,
+                error_type=APIError,
+                error_message="Failed to generate chat response with Groq",
+                model=model,
+                messages=filtered_messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=timeout,
+                **kwargs
             )
             
             # Extract the generated text
             generated_text = response.choices[0].message.content.strip()
             
-            # Approximately track token usage
-            if hasattr(response, "usage") and hasattr(response.usage, "total_tokens"):
-                self.token_count += response.usage.total_tokens
+            # Track token usage
+            tokens = await self.count_tokens(generated_text)
+            self._update_usage_stats(tokens)
             
             self.logger.debug(
                 "Generated chat response",
@@ -210,27 +293,29 @@ class GroqService(LLMService):
     
     async def count_tokens(self, text: str) -> int:
         """
-        Approximately count the number of tokens in a text using cl100k_base.
+        Count the number of tokens in a text using tiktoken.
         
         Args:
             text: The text to count tokens for
             
         Returns:
-            The approximate number of tokens
+            The number of tokens
+            
+        Raises:
+            LLMRequestError: If token counting fails
         """
         try:
-            tokens = self.tokenizer.encode(text)
-            return len(tokens)
+            return len(self.tokenizer.encode(text))
         except Exception as e:
-            self.logger.warning(f"Error counting tokens: {str(e)}")
-            # Fall back to rough estimate
-            return len(text) // 4
+            self.logger.warning(f"Failed to count tokens: {str(e)}")
+            raise LLMRequestError(f"Failed to count tokens: {str(e)}")
     
-    @log_execution_time(logger)
     async def get_embedding(self, text: str) -> List[float]:
         """
         Get an embedding vector for a text.
         
+        Note: Groq doesn't support embeddings yet, so this method raises
+        an error.
         Groq doesn't currently provide an embeddings API, so this method
         raises an error.
         

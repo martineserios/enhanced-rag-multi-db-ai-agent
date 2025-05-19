@@ -79,7 +79,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_record)
 
 
-def setup_logging(level: int = logging.INFO, json_format: bool = True) -> None:
+def setup_logging(level: int = logging.INFO, json_format: bool = True):
     """
     Set up application-wide logging configuration.
     
@@ -87,37 +87,63 @@ def setup_logging(level: int = logging.INFO, json_format: bool = True) -> None:
         level: The minimum log level to record (default: INFO)
         json_format: Whether to format logs as JSON (default: True)
     """
-    # Get the root logger
+    # Clear any existing handlers and loggers
     root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    
-    # Remove existing handlers
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
     
-    # Create console handler
+    # Set log level for all loggers
+    root_logger.setLevel(level)
+    
+    # Configure specific loggers
+    loggers = {
+        'app': logging.DEBUG,  # Enable debug for our application code
+        'uvicorn': logging.INFO,
+        'uvicorn.error': logging.INFO,
+        'uvicorn.access': logging.INFO,
+        'fastapi': logging.INFO,
+        'httpx': logging.WARNING,
+        'httpcore': logging.WARNING,
+        'asyncio': logging.WARNING,
+        'pymongo': logging.DEBUG,  # Enable MongoDB debug logging
+        'motor': logging.DEBUG,    # Enable Motor (async MongoDB) debug logging
+    }
+    
+    # Apply log levels
+    for logger_name, log_level in loggers.items():
+        logging.getLogger(logger_name).setLevel(log_level)
+    
+    # Create console handler with detailed formatter
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     
-    # Add our custom filter
-    context_filter = RequestContextFilter()
-    console_handler.addFilter(context_filter)
-    
-    # Set formatter based on preference
+    # Set formatter based on format type
     if json_format:
         formatter = JSONFormatter()
     else:
         formatter = logging.Formatter(
-            '%(isotime)s [%(request_id)s] %(levelname)s %(name)s - %(message)s'
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)d]'
         )
     
     console_handler.setFormatter(formatter)
+    
+    # Add request context filter
+    console_handler.addFilter(RequestContextFilter())
+    
+    # Add handler to root logger
     root_logger.addHandler(console_handler)
     
-    # Set specific levels for noisy libraries
-    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
-    logging.getLogger('uvicorn.error').setLevel(logging.WARNING)
-    logging.getLogger('httpx').setLevel(logging.WARNING)
+    # Disable propagation for specific loggers to avoid duplicate logs
+    for logger_name in ['uvicorn', 'uvicorn.error', 'uvicorn.access']:
+        logger = logging.getLogger(logger_name)
+        logger.propagate = False
+        logger.handlers = []
+        
+    # Enable SQLAlchemy logging if needed
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+    
+    logger = logging.getLogger(__name__)
+    logger.info("Logging configured successfully")
 
 
 def get_logger(name: str) -> logging.Logger:

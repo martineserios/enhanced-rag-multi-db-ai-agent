@@ -40,22 +40,41 @@ async def init_redis(settings: Settings):
     global _redis_client
     
     try:
+        logger.debug(
+            "Initializing Redis connection with settings",
+            extra={
+                "host": settings.redis_host,
+                "port": settings.redis_port,
+                "db": getattr(settings, 'redis_db', 0)
+            }
+        )
+        
         # Create Redis client
         _redis_client = redis.Redis(
             host=settings.redis_host,
             port=settings.redis_port,
-            password=settings.redis_password,
-            db=settings.redis_db,
-            decode_responses=True
+            password=getattr(settings, 'redis_password', None),
+            db=getattr(settings, 'redis_db', 0),
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+            retry_on_timeout=True
         )
         
         # Test connection
-        await _redis_client.ping()
+        is_alive = await _redis_client.ping()
         
-        logger.info(
-            f"Initialized Redis connection",
-            extra={"host": settings.redis_host, "port": settings.redis_port}
-        )
+        if is_alive:
+            logger.info(
+                "Successfully connected to Redis",
+                extra={
+                    "host": settings.redis_host,
+                    "port": settings.redis_port,
+                    "db": getattr(settings, 'redis_db', 0)
+                }
+            )
+        else:
+            logger.warning("Redis ping returned False, connection may be unstable")
         
         return _redis_client
         

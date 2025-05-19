@@ -6,27 +6,30 @@ This module implements the Memory Manager, which orchestrates interactions
 with different memory systems using the Facade pattern. It provides a unified
 interface for storing and retrieving information across multiple memory types.
 """
-from typing import Dict, List, Any, Optional, Union, Type, TypeVar
 import asyncio
-from datetime import datetime
 import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 
-from app.core.logging import get_logger, log_execution_time
-from app.core.exceptions import (
-    MemoryError, MemoryInitializationError, 
-    MemoryStorageError, MemoryRetrievalError
-)
 from app.config import Settings
-from app.services.memory.base import MemorySystem, MemoryItem
+from app.core.exceptions import (
+    MemoryError,
+    MemoryInitializationError,
+    MemoryRetrievalError,
+    MemoryStorageError,
+)
+from app.core.logging import get_logger, log_execution_time
+from app.services.memory.base import MemoryItem, MemorySystem
 
 # Type for specific memory system implementations
 T = TypeVar('T', bound=MemorySystem)
 
-# Import specific memory implementations
-from app.services.memory.short_term import ShortTermMemory
-from app.services.memory.semantic import SemanticMemory
 from app.services.memory.episodic import EpisodicMemory
 from app.services.memory.procedural import ProceduralMemory
+from app.services.memory.semantic import SemanticMemory
+
+# Import specific memory implementations
+from app.services.memory.short_term import ShortTermMemory
 
 logger = get_logger(__name__)
 
@@ -77,11 +80,15 @@ class MemoryManager:
             
             # Initialize short-term memory (Redis)
             if self.settings.enable_short_term_memory:
-                self.memory_systems['short_term'] = ShortTermMemory(
+                short_term = ShortTermMemory(
                     settings=self.settings,
                     ttl=self.settings.short_term_ttl
                 )
-            
+                # Initialize the Redis connection asynchronously
+                if not await short_term.initialize():
+                    self.logger.warning("Short-term memory initialization completed but health check failed")
+                self.memory_systems['short_term'] = short_term
+                
             # Initialize semantic memory (ChromaDB)
             if self.settings.enable_semantic_memory:
                 self.memory_systems['semantic'] = SemanticMemory(

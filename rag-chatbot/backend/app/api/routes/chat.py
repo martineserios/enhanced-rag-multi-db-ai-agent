@@ -11,18 +11,25 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Path, Body
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse
+from typing import List, Dict, Optional, Any
+import uuid
+from datetime import datetime
+import asyncio
 
 from app.core.logging import get_logger
-from app.core.exceptions import (
-    LLMError, LLMProviderError, LLMRequestError, 
-    MemoryError, MemoryRetrievalError
+from app.config import Settings, get_settings
+from app.api.models.chat import (
+    ChatRequest, ChatResponse, 
+    ConversationSummary, ConversationMessage,
+    ConversationHistoryResponse, ConversationDeleteResponse,
+    ConversationListResponse
 )
-from app.config import Settings, get_settings, ChatRequest, ChatResponse
 from app.services.llm.factory import get_llm_service
+from app.services.llm.base import LLMProviderError, LLMRequestError
+from app.services.database import query_postgres, query_mongo
 from app.services.memory.manager import get_memory_manager
-from app.services.database.postgres import query_postgres
-from app.services.database.mongo import query_mongo
+from app.core.exceptions import MemoryError, MemoryRetrievalError
 
 import logging
 logger = logging.getLogger("uvicorn.error") 
@@ -30,6 +37,18 @@ logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+async def store_memory_in_background(memory_manager, memory_type, content, key, metadata, conversation_id):
+    try:
+        await memory_manager.store_memory(
+            memory_type=memory_type,
+            content=content,
+            key=key,
+            metadata=metadata,
+            conversation_id=conversation_id
+        )
+    except Exception as e:
+        logger.error(f"Error storing conversation in memory: {str(e)}")
 
 @router.post("/", response_model=ChatResponse)
 async def chat(
@@ -188,7 +207,8 @@ async def chat(
                 # Store in short-term memory
                 if "short_term" in memory_types:
                     background_tasks.add_task(
-                        memory_manager.store_memory,
+                        store_memory_in_background,
+                        memory_manager=memory_manager,
                         memory_type="short_term",
                         content=content,
                         key=message_key,
@@ -199,7 +219,8 @@ async def chat(
                 # Store in episodic memory
                 if "episodic" in memory_types:
                     background_tasks.add_task(
-                        memory_manager.store_memory,
+                        store_memory_in_background,
+                        memory_manager=memory_manager,
                         memory_type="episodic",
                         content=content,
                         key=message_key,
@@ -239,7 +260,7 @@ async def chat(
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
-@router.get("/conversations")
+@router.get("/conversations", response_model=ConversationListResponse)
 async def get_conversations(
     limit: int = Query(10, ge=1, le=100),
     settings: Settings = Depends(get_settings)
@@ -252,7 +273,7 @@ async def get_conversations(
         settings: Application settings
         
     Returns:
-        Dictionary with list of conversations
+        List of ConversationSummary objects
         
     Raises:
         HTTPException: If retrieving conversations fails
@@ -260,62 +281,151 @@ async def get_conversations(
     try:
         if not settings.memory_enabled or not settings.enable_episodic_memory:
             logger.warning("Memory system or episodic memory is disabled")
-            return {"conversations": []}
+            return []
         
         memory_manager = get_memory_manager()
         
         # Get unique conversation IDs from episodic memory
-        mongo_db = memory_manager.memory_systems["episodic"].db
-        episodic_collection = mongo_db["episodic_memory"]
-        
-        # Aggregate to get unique conversation IDs with latest timestamp
-        pipeline = [
-            {"$sort": {"timestamp": -1}},
-            {"$group": {
-                "_id": "$conversation_id",
-                "latest_message": {"$first": "$user_message"},
-                "latest_response": {"$first": "$assistant_message"},
-                "latest_time": {"$first": "$timestamp"},
-                "count": {"$sum": 1}
-            }},
-            {"$sort": {"latest_time": -1}},
-            {"$limit": limit}
-        ]
-        
-        cursor = episodic_collection.aggregate(pipeline)
-        conversations = await cursor.to_list(length=limit)
-        
-        # Format timestamps and truncate long messages
-        for conv in conversations:
-            if "latest_time" in conv:
-                conv["latest_time"] = conv["latest_time"].isoformat()
+        try:
+            if "episodic" not in memory_manager.memory_systems:
+                logger.error("Episodic memory system not found in memory manager")
+                return []
+                
+            mongo_db = memory_manager.memory_systems["episodic"].db
+            if mongo_db is None:
+                logger.error("MongoDB database not initialized in episodic memory system")
+                return []
+                
+            try:
+                # List all collections to verify the database is accessible
+                collection_names = await mongo_db.list_collection_names()
+                logger.info(f"Available collections in database: {collection_names}")
+                
+                # Get or create the episodic_memory collection
+                episodic_collection = mongo_db["episodic_memory"]
+                logger.info(f"Using MongoDB collection: {episodic_collection.name}")
+                
+                # Ensure indexes exist
+                await episodic_collection.create_index([("conversation_id", 1)])
+                await episodic_collection.create_index([("timestamp", -1)])
+                
+            except Exception as e:
+                logger.error(f"Failed to access MongoDB collection: {str(e)}", exc_info=True)
+                return []
             
-            # Truncate long messages
-            if "latest_message" in conv and len(conv["latest_message"]) > 100:
-                conv["latest_message"] = conv["latest_message"][:100] + "..."
+            # First, check if the collection has any documents
+            count = await episodic_collection.count_documents({})
+            logger.info(f"Found {count} total documents in episodic_memory collection")
             
-            if "latest_response" in conv and len(conv["latest_response"]) > 100:
-                conv["latest_response"] = conv["latest_response"][:100] + "..."
-        
-        return {
-            "conversations": [
-                {
-                    "conversation_id": conv["_id"],
-                    "latest_message": conv.get("latest_message", ""),
-                    "latest_response": conv.get("latest_response", ""),
-                    "latest_time": conv.get("latest_time", ""),
-                    "message_count": conv.get("count", 0)
-                }
-                for conv in conversations
+            if count == 0:
+                logger.info("No conversations found in episodic memory")
+                return []
+            
+            # Aggregate to get unique conversation IDs with latest timestamp
+            pipeline = [
+                {"$match": {"conversation_id": {"$exists": True, "$ne": None}}},  # Ensure conversation_id exists
+                {"$sort": {"timestamp": -1}},
+                {"$group": {
+                    "_id": "$conversation_id",
+                    "latest_message": {"$first": "$user_message"},
+                    "latest_response": {"$first": "$assistant_message"},
+                    "latest_time": {"$first": "$timestamp"},
+                    "message_count": {"$sum": 1}
+                }},
+                {"$sort": {"latest_time": -1}},
+                {"$limit": limit}
             ]
-        }
+            
+            logger.info(f"Executing aggregation pipeline: {pipeline}")
+            cursor = episodic_collection.aggregate(pipeline)
+            conversations = await cursor.to_list(length=limit)
+            logger.info(f"Retrieved {len(conversations)} conversations from database")
+            
+        except Exception as db_error:
+            logger.error(f"Database error in get_conversations: {str(db_error)}", exc_info=True)
+            return []
+        
+        # Convert to ConversationSummary objects
+        result = []
+        
+        # Ensure conversations is a list
+        if not isinstance(conversations, list):
+            logger.warning(f"Expected conversations to be a list, got {type(conversations)}. Converting to list.")
+            conversations = [conversations] if conversations is not None else []
+            
+        logger.info(f"Processing {len(conversations) if conversations else 0} conversations")
+        
+        if not conversations:
+            logger.info("No conversations to process")
+            return result
+            
+        for idx, conv in enumerate(conversations, 1):
+            try:
+                logger.debug(f"Processing conversation {idx}/{len(conversations)}")
+                
+                # Debug log the conversation structure
+                if not isinstance(conv, dict):
+                    logger.warning(f"Unexpected conversation format (expected dict, got {type(conv)}): {conv}")
+                    continue
+                    
+                # Log all available keys in the conversation
+                logger.debug(f"Conversation keys: {list(conv.keys())}")
+                
+                # Safely get values with debug logging and type checking
+                conv_id = conv.get("_id") if hasattr(conv, 'get') else None
+                latest_msg = conv.get("latest_message") if hasattr(conv, 'get') else None
+                latest_resp = conv.get("latest_response") if hasattr(conv, 'get') else None
+                latest_time = conv.get("latest_time") if hasattr(conv, 'get') else None
+                msg_count = conv.get("message_count") if hasattr(conv, 'get') else 0
+                
+                # Log the extracted values for debugging
+                logger.debug(
+                    f"Extracted values - id: {conv_id}, "
+                    f"latest_msg: {latest_msg}, latest_resp: {latest_resp}, "
+                    f"latest_time: {latest_time}, count: {msg_count}"
+                )
+                
+                # Handle datetime conversion
+                if isinstance(latest_time, datetime):
+                    latest_time = latest_time.isoformat()
+                
+                # Ensure all required fields have safe defaults
+                safe_conv_id = str(conv_id) if conv_id is not None else f"unknown_{idx}"
+                safe_latest_msg = str(latest_msg) if latest_msg is not None else ""
+                safe_latest_resp = str(latest_resp) if latest_resp is not None else ""
+                safe_latest_time = str(latest_time) if latest_time is not None else ""
+                safe_msg_count = int(msg_count) if msg_count is not None and str(msg_count).isdigit() else 0
+                
+                # Create the summary object
+                summary = ConversationSummary(
+                    conversation_id=safe_conv_id,
+                    latest_message=safe_latest_msg,
+                    latest_response=safe_latest_resp,
+                    latest_time=safe_latest_time,
+                    message_count=safe_msg_count
+                )
+                
+                logger.debug(f"Created summary: {summary}")
+                result.append(summary)
+                
+            except Exception as e:
+                logger.error(
+                    f"Error processing conversation at index {idx}: {str(e)}", 
+                    exc_info=True, 
+                    extra={"conversation_data": str(conv)[:500] if conv else "No conversation data"}
+                )
+                continue
+        
+        # Return the result using the ConversationListResponse model
+        return {"conversations": result, "total_count": len(result)}
         
     except Exception as e:
         logger.exception(f"Error retrieving conversations: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve conversations: {str(e)}")
+        # Return empty response with proper structure on error
+        return {"conversations": [], "total_count": 0}
 
 
-@router.get("/conversation/{conversation_id}")
+@router.get("/conversation/{conversation_id}", response_model=ConversationHistoryResponse)
 async def get_conversation_history(
     conversation_id: str = Path(..., description="ID of the conversation to retrieve"),
     limit: int = Query(20, ge=1, le=100),
@@ -330,7 +440,7 @@ async def get_conversation_history(
         settings: Application settings
         
     Returns:
-        Dictionary with conversation details and messages
+        ConversationHistoryResponse with conversation details and messages
         
     Raises:
         HTTPException: If retrieving the conversation fails
@@ -353,19 +463,41 @@ async def get_conversation_history(
         if not results:
             raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
         
-        # Sort messages by timestamp
-        messages = sorted(
-            results,
-            key=lambda x: x.get("timestamp", ""),
-            reverse=True  # Newest first
-        )
+        # Convert results to ConversationMessage objects
+        messages = []
+        if results:
+            for msg in results:
+                try:
+                    if not isinstance(msg, dict):
+                        logger.warning(f"Unexpected message format: {msg}")
+                        continue
+                        
+                    timestamp = msg.get("timestamp")
+                    if isinstance(timestamp, datetime):
+                        timestamp = timestamp.isoformat()
+                    
+                    messages.append(ConversationMessage(
+                        message_id=msg.get("id") or str(uuid.uuid4()),
+                        conversation_id=conversation_id,
+                        user_message=msg.get("user_message", "") or "",
+                        assistant_message=msg.get("assistant_message", "") or "",
+                        timestamp=timestamp or "",
+                        memory_sources=msg.get("memory_sources", {}) or {},
+                        provider=msg.get("provider"),
+                        metadata=msg.get("metadata", {}) or {}
+                    ))
+                except Exception as e:
+                    logger.error(f"Error processing message: {str(e)}", exc_info=True)
+                    continue
         
-        # Format the response
-        return {
-            "conversation_id": conversation_id,
-            "message_count": len(messages),
-            "messages": messages
-        }
+        # Sort messages by timestamp (newest first)
+        messages.sort(key=lambda x: x.timestamp, reverse=True)
+        
+        return ConversationHistoryResponse(
+            conversation_id=conversation_id,
+            message_count=len(messages),
+            messages=messages
+        )
         
     except HTTPException:
         raise
@@ -377,7 +509,7 @@ async def get_conversation_history(
         )
 
 
-@router.delete("/conversation/{conversation_id}")
+@router.delete("/conversation/{conversation_id}", response_model=ConversationDeleteResponse)
 async def delete_conversation(
     conversation_id: str = Path(..., description="ID of the conversation to delete"),
     settings: Settings = Depends(get_settings)
@@ -390,7 +522,7 @@ async def delete_conversation(
         settings: Application settings
         
     Returns:
-        Status message indicating success
+        ConversationDeleteResponse with status and message
         
     Raises:
         HTTPException: If deleting the conversation fails
@@ -427,10 +559,11 @@ async def delete_conversation(
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Conversation {conversation_id} not found")
         
-        return {
-            "status": "success",
-            "message": f"Conversation {conversation_id} deleted successfully"
-        }
+        return ConversationDeleteResponse(
+            conversation_id=conversation_id,
+            status="deleted",
+            message=f"Conversation {conversation_id} deleted successfully"
+        )
         
     except HTTPException:
         raise
@@ -439,10 +572,55 @@ async def delete_conversation(
         raise HTTPException(status_code=500, detail=f"Failed to delete conversation: {str(e)}")
 
 @router.get("/providers")
-def get_providers(settings: Settings = Depends(get_settings)):
+async def get_providers(settings: Settings = Depends(get_settings)):
     """
-    Return a list of all available LLM providers.
+    Return a list of all available LLM providers and their status.
+    
+    Returns:
+        dict: Dictionary containing:
+            - providers: List of available provider names
+            - default: Default provider name
+            - status: Dictionary mapping provider names to their status (enabled/disabled)
     """
-    # Adjust the attribute name as needed
-    providers = getattr(settings, "llm_providers", ["openai"])
-    return {"providers": providers}
+    from app.services.llm.factory import LLM_SERVICES
+    
+    # Get all configured providers
+    configured_providers = getattr(settings, "llm_providers", [])
+    
+    # Check which providers are actually available (have API keys)
+    available_providers = []
+    status = {}
+    
+    for provider in configured_providers:
+        try:
+            api_key_attr = f"{provider}_api_key"
+            if hasattr(settings, api_key_attr) and getattr(settings, api_key_attr):
+                available_providers.append(provider)
+                status[provider] = "enabled"
+            else:
+                status[provider] = "disabled"
+        except Exception as e:
+            status[provider] = f"error: {str(e)}"
+    
+    # Get default provider from settings or use the first available
+    default_provider = getattr(settings, "default_llm_provider", None)
+    if isinstance(default_provider, str):
+        default_provider = default_provider.lower()
+    elif hasattr(default_provider, "value"):
+        default_provider = default_provider.value.lower()
+    
+    # If default provider is not available, use first available provider
+    if not default_provider or default_provider not in available_providers:
+        default_provider = available_providers[0] if available_providers else None
+    
+    logger.info(
+        f"Available providers: {available_providers}, "
+        f"Default: {default_provider}, "
+        f"Status: {status}"
+    )
+    
+    return {
+        "providers": available_providers,
+        "default": default_provider,
+        "status": status
+    }

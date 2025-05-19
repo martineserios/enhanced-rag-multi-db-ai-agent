@@ -42,26 +42,90 @@ class ShortTermMemory(MemorySystem[Dict[str, Any]]):
         Args:
             settings: Application configuration settings
             ttl: Time-to-live in seconds for memory items (default: 1 hour)
-            
-        Raises:
-            DatabaseConnectionError: If Redis connection fails
         """
         super().__init__("short_term")
         self.settings = settings
         self.ttl = ttl
+        self.redis = None
         
-        # Initialize Redis connection
+    async def initialize(self):
+        """
+        Initialize the Redis connection asynchronously.
+        
+        Raises:
+            DatabaseConnectionError: If Redis connection fails
+        """
         try:
-            self.redis = redis.Redis(
-                host=settings.redis_host,
-                port=settings.redis_port,
-                password=settings.redis_password,
-                db=settings.redis_db,
-                decode_responses=True
+            logger.debug(
+                "Initializing Redis connection for short-term memory",
+                extra={
+                    "host": self.settings.redis_host,
+                    "port": self.settings.redis_port,
+                    "db": getattr(self.settings, 'redis_db', 0),
+                    "ttl": self.ttl
+                }
             )
+            
+            self.redis = redis.Redis(
+                host=self.settings.redis_host,
+                port=self.settings.redis_port,
+                password=getattr(self.settings, 'redis_password', None),
+                db=getattr(self.settings, 'redis_db', 0),
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+                retry_on_timeout=True
+            )
+            
+            # Test connection
+            is_alive = await self.health_check()
+            if is_alive:
+                logger.info(
+                    "Successfully connected to Redis for short-term memory",
+                    extra={
+                        "host": self.settings.redis_host,
+                        "port": self.settings.redis_port,
+                        "db": getattr(self.settings, 'redis_db', 0)
+                    }
+                )
+                return True
+            else:
+                logger.warning("Redis ping returned False for short-term memory")
+                return False
+                
         except Exception as e:
-            logger.exception("Failed to initialize Redis connection")
+            logger.exception(
+                "Failed to initialize Redis connection for short-term memory",
+                extra={"error": str(e)}
+            )
             raise DatabaseConnectionError(f"Redis connection failed: {str(e)}")
+    
+    async def health_check(self) -> bool:
+        """
+        Check if the Redis connection is healthy.
+        
+        Returns:
+            bool: True if the connection is healthy, False otherwise
+        """
+        try:
+            if not self.redis:
+                logger.warning("Redis connection not initialized")
+                return False
+                
+            # Test the connection with a ping
+            is_alive = await self.redis.ping()
+            if not is_alive:
+                logger.warning("Redis ping failed")
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logger.exception(
+                "Health check failed for Redis connection",
+                extra={"error": str(e)}
+            )
+            return False
     
     @log_execution_time(logger)
     async def store(
@@ -137,7 +201,14 @@ class ShortTermMemory(MemorySystem[Dict[str, Any]]):
             self.logger.exception("Redis error storing message")
             raise MemoryStorageError(f"Failed to store in short-term memory: {str(e)}")
         except Exception as e:
-            self.logger.exception("Unexpected error storing message")
+            logger.exception(
+                "Failed to store in short-term memory",
+                extra={
+                    "key": key,
+                    "error": str(e),
+                    "content_type": type(content).__name__
+                }
+            )
             raise MemoryStorageError(f"Failed to store in short-term memory: {str(e)}")
     
     @log_execution_time(logger)
@@ -156,26 +227,30 @@ class ShortTermMemory(MemorySystem[Dict[str, Any]]):
             MemoryRetrievalError: If retrieval fails
         """
         try:
-            # Get the data from Redis
-            json_data = await self.redis.get(key)
+            logger.debug("Retrieving data from short-term memory", extra={"key": key})
             
-            if json_data is None:
+            # Get the data from Redis
+            data = await self.redis.get(key)
+            if data is None:
+                logger.debug("Key not found in short-term memory", extra={"key": key})
                 return None
             
-            # Parse the JSON data
-            data = json.loads(json_data)
+            logger.debug("Successfully retrieved data from short-term memory", 
+                        extra={"key": key, "data_length": len(data) if data else 0})
+                
+            return json.loads(data)
             
-            # Return the content
-            return data.get("content")
-            
-        except RedisError as e:
-            self.logger.exception(f"Redis error retrieving message: {key}")
-            raise MemoryRetrievalError(f"Failed to retrieve from short-term memory: {str(e)}")
         except json.JSONDecodeError as e:
-            self.logger.exception(f"Invalid JSON in Redis for key: {key}")
-            raise MemoryRetrievalError(f"Failed to decode message from short-term memory: {str(e)}")
+            logger.exception(
+                "Failed to decode data from short-term memory",
+                extra={"key": key, "error": str(e)}
+            )
+            raise MemoryRetrievalError(f"Failed to decode data from short-term memory: {str(e)}")
         except Exception as e:
-            self.logger.exception(f"Unexpected error retrieving message: {key}")
+            logger.exception(
+                "Failed to retrieve from short-term memory",
+                extra={"key": key, "error": str(e)}
+            )
             raise MemoryRetrievalError(f"Failed to retrieve from short-term memory: {str(e)}")
     
     @log_execution_time(logger)
@@ -206,7 +281,7 @@ class ShortTermMemory(MemorySystem[Dict[str, Any]]):
         """
         try:
             if conversation_id is None:
-                self.logger.warning("No conversation_id provided for short-term memory search")
+                logger.warning("No conversation_id provided for short-term memory search")
                 return []
             
             # Get the conversation history from the sorted set
@@ -245,7 +320,7 @@ class ShortTermMemory(MemorySystem[Dict[str, Any]]):
                         
                         results.append(result)
                     except json.JSONDecodeError:
-                        self.logger.warning(f"Invalid JSON in Redis for key: {key}")
+                        logger.warning(f"Invalid JSON in Redis for key: {key}")
             
             # Sort by timestamp (newest first)
             results.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -253,10 +328,10 @@ class ShortTermMemory(MemorySystem[Dict[str, Any]]):
             return results
             
         except RedisError as e:
-            self.logger.exception("Redis error searching messages")
+            logger.exception("Redis error searching messages")
             raise MemoryRetrievalError(f"Failed to search short-term memory: {str(e)}")
         except Exception as e:
-            self.logger.exception("Unexpected error searching messages")
+            logger.exception("Unexpected error searching messages")
             raise MemoryRetrievalError(f"Failed to search short-term memory: {str(e)}")
     
     @log_execution_time(logger)
@@ -297,10 +372,10 @@ class ShortTermMemory(MemorySystem[Dict[str, Any]]):
             return True
             
         except RedisError as e:
-            self.logger.exception(f"Redis error deleting message: {key}")
+            logger.exception(f"Redis error deleting message: {key}")
             raise MemoryError(f"Failed to delete from short-term memory: {str(e)}")
         except Exception as e:
-            self.logger.exception(f"Unexpected error deleting message: {key}")
+            logger.exception(f"Unexpected error deleting message: {key}")
             raise MemoryError(f"Failed to delete from short-term memory: {str(e)}")
     
     @log_execution_time(logger)

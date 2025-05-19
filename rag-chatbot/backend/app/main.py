@@ -20,7 +20,7 @@ from app.core.logging import setup_logging, get_logger
 from app.core.exceptions import BaseAppException
 from app.config import Settings, get_settings
 from app.api.middleware import RequestLoggingMiddleware, PerformanceMonitoringMiddleware
-from app.api.routes import chat, memory, documents
+from app.api.routes import chat, memory, documents, debug
 from app.services.database.postgres import init_postgres
 from app.services.database.mongo import init_mongo
 from app.services.memory.manager import init_memory_manager
@@ -143,6 +143,12 @@ def create_application() -> FastAPI:
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
     app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
     app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
+    
+    # Only include debug routes in development
+    import os
+    if os.getenv("ENVIRONMENT", "production").lower() == "development":
+        logger.info("Running in development mode - enabling debug endpoints")
+        app.include_router(debug.router, prefix="/api/debug", tags=["debug"])
     
     # Add custom docs endpoint
     @app.get("/docs", include_in_schema=False)
