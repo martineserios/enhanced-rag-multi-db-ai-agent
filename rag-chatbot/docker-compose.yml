@@ -46,6 +46,12 @@ services:
       - neo4j
     networks:
       - ragnet
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Frontend Streamlit UI
   frontend:
@@ -68,13 +74,33 @@ services:
     env_file:
       - .env
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - ragnet
     security_opt:
       - seccomp=unconfined
+      - apparmor=unconfined
     cap_add:
       - SYS_ADMIN
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+      - /var/run
+      - /var/lock
+      - /var/tmp
+    shm_size: '2gb'
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # PostgreSQL (Relational Database)
   postgres:

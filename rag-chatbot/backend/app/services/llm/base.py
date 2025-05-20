@@ -340,22 +340,28 @@ class LLMService(ABC):
             LLMRateLimitError: If rate limits are exceeded
         """
         try:
-            # Create a system message with context if provided
-            system_message = "You are a helpful assistant that provides accurate information."
-            
+            # Create the messages list with system message first
+            messages = []
+            if "system_prompt" in kwargs:
+                messages.append({"role": "system", "content": kwargs.pop("system_prompt")})
+            else:
+                messages.append({
+                    "role": "system",
+                    "content": "You are a helpful assistant that provides accurate information."
+                })
+
             if context:
-                system_message += (
-                    "\n\nYou have access to the following information that may help answer "
-                    "the user's question. Use this information if relevant, but you don't "
-                    "have to use it all:\n\n"
-                    f"{context}"
-                )
-            
-            # Create the messages list
-            messages = [
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": query}
-            ]
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "You have access to the following information that may help answer "
+                        "the user's question. Use this information if relevant, but you don't "
+                        "have to use it all:\n\n"
+                        f"{context}"
+                    )
+                })
+
+            messages.append({"role": "user", "content": query})
             
             # Generate the response with retry logic
             response = await self._execute_with_retry(

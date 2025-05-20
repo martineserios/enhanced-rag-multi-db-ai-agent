@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     )
     app_version: str = Field(default="1.0.0", env="APP_VERSION")
     debug: bool = Field(default=False, env="DEBUG")
+    default_agent_id: str = Field(default="standard", env="DEFAULT_AGENT_ID")
     
     # Logging settings
     log_level: LogLevel = Field(default=LogLevel.INFO, env="LOG_LEVEL")

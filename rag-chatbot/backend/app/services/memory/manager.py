@@ -210,6 +210,65 @@ class MemoryManager:
             raise MemoryStorageError(f"Failed to store in {memory_type} memory: {str(e)}")
     
     @log_execution_time(logger)
+    async def store_conversation(
+        self,
+        conversation_id: str,
+        content: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None,
+        **kwargs
+    ) -> str:
+        """
+        Store a conversation in episodic memory.
+        This is a higher-level method that provides a more semantically meaningful
+        interface for storing conversations.
+        
+        Args:
+            conversation_id: The ID of the conversation
+            content: The conversation content (must contain user_message and/or assistant_message)
+            metadata: Additional metadata about the conversation
+            **kwargs: Additional parameters for the memory system
+            
+        Returns:
+            The key used to store the conversation
+            
+        Raises:
+            MemoryStorageError: If storing the conversation fails
+            ValueError: If content is missing required fields
+        """
+        try:
+            # Validate content
+            if not isinstance(content, dict):
+                raise ValueError("Content must be a dictionary")
+            
+            if not content.get("user_message") and not content.get("assistant_message"):
+                raise ValueError("Content must contain either user_message or assistant_message")
+            
+            # Generate a unique key for the message
+            key = f"conversation:{conversation_id}:message:{uuid.uuid4()}"
+            
+            # Add conversation-specific metadata
+            if metadata is None:
+                metadata = {}
+            metadata.update({
+                "conversation_id": conversation_id,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            
+            # Store in episodic memory
+            return await self.store_memory(
+                memory_type="episodic",
+                content=content,
+                key=key,
+                metadata=metadata,
+                conversation_id=conversation_id,
+                **kwargs
+            )
+            
+        except Exception as e:
+            self.logger.exception("Failed to store conversation")
+            raise MemoryStorageError(f"Failed to store conversation: {str(e)}")
+    
+    @log_execution_time(logger)
     async def retrieve_memory(
         self,
         memory_type: str,

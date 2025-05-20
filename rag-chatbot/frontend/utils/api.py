@@ -10,6 +10,7 @@ import json
 from typing import Dict, List, Any, Optional
 import requests
 import streamlit as st
+from datetime import datetime
 
 
 class APIError(Exception):
@@ -73,7 +74,7 @@ class APIClient:
             raise APIError(f"Health check failed: {str(e)}")
     
     @st.cache_data(ttl=60)  # Cache for 60 seconds
-    def get_providers(_self) -> Dict[str, Any]:
+    def get_providers(self) -> Dict[str, Any]:
         """
         Get available LLM providers.
         
@@ -84,14 +85,53 @@ class APIClient:
             APIError: If the request fails
         """
         try:
-            response = _self.session.get(f"{_self.base_url}/api/providers", timeout=5)
+            response = self.session.get(f"{self.base_url}/api/chat/providers", timeout=5)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             raise APIError(f"Failed to get providers: {str(e)}")
     
     @st.cache_data(ttl=60)  # Cache for 60 seconds
-    def get_memory_types(_self) -> Dict[str, Any]:
+    def get_agents(self) -> Dict[str, Any]:
+        """
+        Get available chat agents.
+        
+        Returns:
+            Dictionary with agent information
+            
+        Raises:
+            APIError: If the request fails
+        """
+        try:
+            response = self.session.get(f"{self.base_url}/api/chat/agents", timeout=5)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise APIError(f"Failed to get agents: {str(e)}")
+    
+    @st.cache_data(ttl=60)  # Cache for 60 seconds
+    def get_agent_settings(self, agent_id: str) -> Dict[str, Any]:
+        """
+        Get settings for a specific agent.
+        
+        Args:
+            agent_id: ID of the agent
+            
+        Returns:
+            Dictionary with agent settings
+            
+        Raises:
+            APIError: If the request fails
+        """
+        try:
+            response = self.session.get(f"{self.base_url}/api/chat/agents/{agent_id}/settings", timeout=5)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise APIError(f"Failed to get agent settings: {str(e)}")
+    
+    @st.cache_data(ttl=60)  # Cache for 60 seconds
+    def get_memory_types(self) -> Dict[str, Any]:
         """
         Get available memory types.
         
@@ -102,14 +142,14 @@ class APIClient:
             APIError: If the request fails
         """
         try:
-            response = _self.session.get(f"{_self.base_url}/api/memory/types", timeout=5)
+            response = self.session.get(f"{self.base_url}/api/memory/types", timeout=5)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             raise APIError(f"Failed to get memory types: {str(e)}")
     
     @st.cache_data(ttl=60)  # Cache for 60 seconds
-    def get_conversations(_self) -> Dict[str, Any]:
+    def get_conversations(self) -> Dict[str, Any]:
         """
         Get a list of conversations.
         
@@ -120,14 +160,14 @@ class APIClient:
             APIError: If the request fails
         """
         try:
-            response = _self.session.get(f"{_self.base_url}/api/chat/conversations", timeout=5)
+            response = self.session.get(f"{self.base_url}/api/chat/conversations", timeout=5)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             raise APIError(f"Failed to get conversations: {str(e)}")
     
     @st.cache_data(ttl=60)  # Cache for 60 seconds
-    def get_conversation_history(_self, conversation_id: str) -> Dict[str, Any]:
+    def get_conversation_history(self, conversation_id: str) -> Dict[str, Any]:
         """
         Get the message history for a conversation.
         
@@ -141,14 +181,37 @@ class APIClient:
             APIError: If the request fails
         """
         try:
-            response = _self.session.get(
-                f"{_self.base_url}/api/chat/conversation/{conversation_id}",
+            response = self.session.get(
+                f"{self.base_url}/api/chat/conversation/{conversation_id}",
                 timeout=5
             )
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
             raise APIError(f"Failed to get conversation history: {str(e)}")
+    
+    def delete_conversation(self, conversation_id: str) -> Dict[str, Any]:
+        """
+        Delete a conversation.
+        
+        Args:
+            conversation_id: ID of the conversation
+            
+        Returns:
+            Dictionary with deletion status
+            
+        Raises:
+            APIError: If the request fails
+        """
+        try:
+            response = self.session.delete(
+                f"{self.base_url}/api/chat/conversation/{conversation_id}",
+                timeout=5
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise APIError(f"Failed to delete conversation: {str(e)}")
     
     def chat(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -165,7 +228,7 @@ class APIClient:
         """
         try:
             response = self.session.post(
-                f"{self.base_url}/api/chat/",
+                f"{self.base_url}/api/chat",
                 json=request_data,
                 timeout=30  # Longer timeout for chat
             )
@@ -182,7 +245,7 @@ class APIClient:
             raise APIError(f"Chat request failed: {str(e)}")
     
     @st.cache_data(ttl=60)  # Cache for 60 seconds
-    def get_documents(_self) -> Dict[str, Any]:
+    def get_documents(self) -> Dict[str, Any]:
         """
         Get a list of documents.
         
@@ -193,7 +256,7 @@ class APIClient:
             APIError: If the request fails
         """
         try:
-            response = _self.session.get(f"{_self.base_url}/api/documents/", timeout=5)
+            response = self.session.get(f"{self.base_url}/api/documents/", timeout=5)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -255,6 +318,29 @@ class APIClient:
                     error_detail = str(e)
                 raise APIError(f"Document upload failed: {error_detail}", status_code, e.response)
             raise APIError(f"Document upload failed: {str(e)}")
+    
+    def get_document_chunks(self, document_id: str) -> Dict[str, Any]:
+        """
+        Get chunks for a document.
+        
+        Args:
+            document_id: ID of the document
+            
+        Returns:
+            Dictionary with document chunks
+            
+        Raises:
+            APIError: If the request fails
+        """
+        try:
+            response = self.session.get(
+                f"{self.base_url}/api/documents/{document_id}/chunks",
+                timeout=5
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise APIError(f"Failed to get document chunks: {str(e)}")
     
     def search_documents(self, query: str) -> Dict[str, Any]:
         """

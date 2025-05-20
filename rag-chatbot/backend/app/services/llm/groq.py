@@ -10,6 +10,7 @@ import asyncio
 from typing import Dict, List, Any, Optional, Union
 import json
 import logging
+import aiohttp
 
 from groq import AsyncGroq, APIError
 import tiktoken
@@ -34,6 +35,7 @@ class GroqService(LLMService):
         client: Groq API client
         model: Currently configured model
         tokenizer: Tokenizer for counting tokens
+        session: aiohttp client session for making HTTP requests
     """
     
     def __init__(self, settings: Settings):
@@ -51,6 +53,9 @@ class GroqService(LLMService):
         # Configure retry settings
         self.retry_attempts = getattr(settings, 'llm_retry_attempts', 3)
         self.retry_delay = getattr(settings, 'llm_retry_delay', 1.0)  # seconds
+        
+        # Initialize aiohttp session
+        self.session = aiohttp.ClientSession()
         
         # Validate provider settings
         self._validate_provider_settings()
@@ -209,87 +214,52 @@ class GroqService(LLMService):
         **kwargs
     ) -> str:
         """
-        Generate a response in a chat conversation using Groq's chat API.
+        Generate a chat response using Groq's chat completion API.
         
         Args:
             messages: List of message dictionaries with 'role' and 'content'
             model: The model to use for generation
             max_tokens: Maximum number of tokens to generate
-            temperature: Controls randomness (0.0 to 1.0)
-            **kwargs: Additional parameters for the API
+            temperature: Sampling temperature
+            **kwargs: Additional parameters for the Groq API
             
         Returns:
-            The generated response
+            The generated response text
             
         Raises:
             LLMRequestError: If the generation fails
             LLMRateLimitError: If rate limits are exceeded
         """
-        # Use provided model or default
-        model = model or self.model
-        
-        # Filter out any messages with empty content
-        filtered_messages = [
-            msg for msg in messages 
-            if msg.get("content") and msg.get("role") in ["user", "assistant", "system"]
-        ]
-        
-        # Add system message if not present
-        system_message = kwargs.pop("system_message", None)
-        if system_message and not any(msg.get("role") == "system" for msg in filtered_messages):
-            filtered_messages.insert(0, {
-                "role": "system",
-                "content": system_message
-            })
-        
-        # Create a timeout
-        timeout = kwargs.pop("timeout", self.request_timeout)
-        
         try:
-            # Make the API call with retry logic
-            response = await self._execute_with_retry(
-                self.client.chat.completions.create,
-                error_type=APIError,
-                error_message="Failed to generate chat response with Groq",
-                model=model,
-                messages=filtered_messages,
+            # Use provided model or default
+            model_name = model or self.model
+            
+            # Make the API request using the client
+            response = await self.client.chat.completions.create(
+                model=model_name,
+                messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                timeout=timeout,
                 **kwargs
             )
             
-            # Extract the generated text
-            generated_text = response.choices[0].message.content.strip()
+            # Extract the response text
+            if not response.choices:
+                raise LLMRequestError("No response generated from Groq")
             
-            # Track token usage
-            tokens = await self.count_tokens(generated_text)
-            self._update_usage_stats(tokens)
-            
-            self.logger.debug(
-                "Generated chat response",
-                extra={
-                    "model": self.model,
-                    "message_count": len(messages),
-                    "response_length": len(generated_text)
-                }
-            )
-            
-            return generated_text
-            
-        except asyncio.TimeoutError:
-            self.logger.error(f"Groq request timed out after {timeout} seconds")
-            raise LLMRequestError(f"Groq request timed out after {timeout} seconds")
+            return response.choices[0].message.content
+                
         except APIError as e:
-            if "rate limit" in str(e).lower():
-                self.logger.warning(f"Groq rate limit exceeded: {str(e)}")
-                raise LLMRateLimitError(f"Groq rate limit exceeded: {str(e)}")
-            else:
-                self.logger.error(f"Groq API error: {str(e)}")
-                raise LLMRequestError(f"Groq API error: {str(e)}")
+            if "rate_limit" in str(e).lower():
+                raise LLMRateLimitError("Rate limit exceeded for Groq API")
+            self.logger.error(f"Groq API request failed: {str(e)}")
+            raise LLMRequestError(f"Failed to generate response: {str(e)}")
+        except asyncio.TimeoutError:
+            self.logger.error("Groq API request timed out")
+            raise LLMRequestError("Request timed out")
         except Exception as e:
-            self.logger.exception("Unexpected error generating chat response")
-            raise LLMRequestError(f"Failed to generate chat response with Groq: {str(e)}")
+            self.logger.exception("Unexpected error in Groq chat completion")
+            raise LLMRequestError(f"Failed to generate response: {str(e)}")
     
     async def count_tokens(self, text: str) -> int:
         """
@@ -347,3 +317,9 @@ class GroqService(LLMService):
         except Exception as e:
             self.logger.error(f"Groq health check failed: {str(e)}")
             return False
+
+    async def close(self) -> None:
+        """Close the aiohttp session."""
+        if hasattr(self, 'session'):
+            await self.session.close()
+            self.logger.info("Closed Groq service session")

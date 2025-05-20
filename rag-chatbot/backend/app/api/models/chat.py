@@ -17,11 +17,21 @@ class LLMProvider(str, Enum):
     GROQ = "groq"
 
 
+class AgentInfo(BaseModel):
+    """Information about an available agent."""
+    id: str
+    name: str
+    description: str
+    settings_schema: Dict[str, Any]
+
+
 class ChatMessage(BaseModel):
     """Model for a chat message."""
     role: Literal["user", "assistant", "system"]
     content: str
     timestamp: Optional[str] = None
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
@@ -29,6 +39,7 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     provider: Optional[LLMProvider] = None
+    agent_id: Optional[str] = None  # If not provided, will use default agent
     use_rag: bool = True
     use_sql: bool = False
     use_mongo: bool = False
@@ -39,6 +50,7 @@ class ChatRequest(BaseModel):
     system_prompt: Optional[str] = None
     temperature: float = Field(0.7, ge=0.0, le=1.0)
     max_tokens: Optional[int] = None
+    agent_settings: Optional[Dict[str, Any]] = None  # Agent-specific settings
 
 
 class ChatResponse(BaseModel):
@@ -46,10 +58,13 @@ class ChatResponse(BaseModel):
     message: str
     conversation_id: str
     provider: LLMProvider
+    agent_id: str
+    agent_name: str
     memory_sources: Dict[str, bool] = Field(default_factory=dict)
     timestamp: Optional[str] = None
     token_usage: Optional[Dict[str, int]] = None
     processing_time_ms: Optional[float] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # Agent-specific metadata
 
 
 class StreamChatResponse(BaseModel):
@@ -57,6 +72,8 @@ class StreamChatResponse(BaseModel):
     message_chunk: str
     conversation_id: str
     provider: LLMProvider
+    agent_id: str
+    agent_name: str
     is_complete: bool = False
 
 
@@ -67,6 +84,8 @@ class ConversationMessage(BaseModel):
     user_message: str
     assistant_message: str
     timestamp: str
+    agent_id: str
+    agent_name: str
     memory_sources: Optional[Dict[str, bool]] = None
     provider: Optional[LLMProvider] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -80,6 +99,8 @@ class ConversationSummary(BaseModel):
     latest_time: str
     message_count: int
     title: Optional[str] = None
+    latest_agent_id: Optional[str] = None
+    latest_agent_name: Optional[str] = None
 
 
 class ConversationListResponse(BaseModel):
@@ -101,3 +122,17 @@ class ConversationDeleteResponse(BaseModel):
     conversation_id: str
     status: str
     message: str
+
+
+class AgentListResponse(BaseModel):
+    """Response model for listing available agents."""
+    agents: List[AgentInfo]
+    default_agent_id: str
+
+
+class AgentSettingsResponse(BaseModel):
+    """Response model for agent settings."""
+    agent_id: str
+    agent_name: str
+    settings: Dict[str, Any]
+    schema: Dict[str, Any]

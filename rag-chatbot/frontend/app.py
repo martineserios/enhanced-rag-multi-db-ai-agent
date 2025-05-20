@@ -105,9 +105,135 @@ if "memory_types" not in st.session_state:
 if "show_memory_details" not in st.session_state:
     st.session_state.show_memory_details = False
 
+if "agents_info" not in st.session_state:
+    try:
+        response = requests.get(f"{API_URL}/api/chat/agents")
+        if response.status_code == 200:
+            st.session_state.agents_info = response.json()
+        else:
+            st.error(f"Failed to get agents: {response.text}")
+            st.session_state.agents_info = {"agents": [], "default_agent_id": "standard"}
+    except Exception as e:
+        st.error(f"Error connecting to backend: {str(e)}")
+        st.session_state.agents_info = {"agents": [], "default_agent_id": "standard"}
+
+if "selected_agent_id" not in st.session_state:
+    st.session_state.selected_agent_id = st.session_state.agents_info.get("default_agent_id", "standard")
+
+if "agent_settings" not in st.session_state:
+    st.session_state.agent_settings = {}
+
 # Sidebar for settings
 st.sidebar.title("Memory-Enhanced RAG Chatbot")
 st.sidebar.markdown("---")
+
+# Agent selection
+agents_info = st.session_state.agents_info
+available_agents = agents_info.get("agents", [])
+default_agent_id = agents_info.get("default_agent_id", "standard")
+
+if not available_agents:
+    st.sidebar.error("No agents available. Please check your backend configuration.")
+    st.stop()
+
+# Create a mapping of agent IDs to their display names
+agent_options = {agent["id"]: agent["name"] for agent in available_agents}
+
+# Agent selection dropdown
+selected_agent_id = st.sidebar.selectbox(
+    "Chat Agent",
+    options=list(agent_options.keys()),
+    format_func=lambda x: agent_options.get(x, x),
+    index=list(agent_options.keys()).index(st.session_state.selected_agent_id) if st.session_state.selected_agent_id in agent_options else 0,
+    help="Select which chat agent to use"
+)
+
+# Update selected agent in session state
+st.session_state.selected_agent_id = selected_agent_id
+
+# Get agent settings if they've changed
+if selected_agent_id != st.session_state.get("last_selected_agent_id"):
+    try:
+        response = requests.get(f"{API_URL}/api/chat/agents/{selected_agent_id}/settings")
+        if response.status_code == 200:
+            st.session_state.agent_settings = response.json()
+            st.session_state.last_selected_agent_id = selected_agent_id
+        else:
+            st.error(f"Failed to get agent settings: {response.text}")
+    except Exception as e:
+        st.error(f"Error getting agent settings: {str(e)}")
+
+# Display agent-specific settings
+if st.session_state.agent_settings:
+    agent_info = st.session_state.agent_settings
+    st.sidebar.markdown(f"### {agent_info['agent_name']} Settings")
+    
+    # Get the settings schema and current settings
+    schema = agent_info.get("schema", {})
+    current_settings = agent_info.get("settings", {})
+    
+    # Group settings by category
+    settings_groups = {
+        "Memory Systems": [
+            "short_term_memory",
+            "semantic_memory",
+            "episodic_memory",
+            "procedural_memory"
+        ],
+        "Data Sources": [
+            "use_rag",
+            "use_sql",
+            "use_mongo"
+        ],
+        "Agent Settings": []  # Will be populated with remaining settings
+    }
+    
+    # Add remaining settings to Agent Settings group
+    all_settings = set(schema.get("properties", {}).keys())
+    for group in settings_groups.values():
+        all_settings -= set(group)
+    settings_groups["Agent Settings"] = list(all_settings)
+    
+    # Create settings controls based on the schema
+    for group_name, settings_list in settings_groups.items():
+        if settings_list:  # Only show groups that have settings
+            st.sidebar.markdown(f"#### {group_name}")
+            
+            for prop_name in settings_list:
+                prop_schema = schema.get("properties", {}).get(prop_name, {})
+                if not prop_schema:
+                    continue
+                
+                if prop_schema.get("type") == "boolean":
+                    current_settings[prop_name] = st.sidebar.checkbox(
+                        prop_schema.get("description", prop_name),
+                        value=current_settings.get(prop_name, prop_schema.get("default", False)),
+                        help=prop_schema.get("description", "")
+                    )
+                elif prop_schema.get("type") == "integer":
+                    current_settings[prop_name] = st.sidebar.number_input(
+                        prop_schema.get("description", prop_name),
+                        min_value=prop_schema.get("minimum", 0),
+                        max_value=prop_schema.get("maximum", 100),
+                        value=current_settings.get(prop_name, prop_schema.get("default", 0)),
+                        help=prop_schema.get("description", "")
+                    )
+                elif prop_schema.get("type") == "number":
+                    current_settings[prop_name] = st.sidebar.number_input(
+                        prop_schema.get("description", prop_name),
+                        min_value=float(prop_schema.get("minimum", 0.0)),
+                        max_value=float(prop_schema.get("maximum", 1.0)),
+                        value=float(current_settings.get(prop_name, prop_schema.get("default", 0.0))),
+                        step=0.1,
+                        help=prop_schema.get("description", "")
+                    )
+                elif prop_schema.get("type") == "string" and "enum" in prop_schema:
+                    current_settings[prop_name] = st.sidebar.selectbox(
+                        prop_schema.get("description", prop_name),
+                        options=prop_schema.get("enum", []),
+                        index=prop_schema.get("enum", []).index(current_settings.get(prop_name, prop_schema.get("default", prop_schema.get("enum", [""])[0]))),
+                        help=prop_schema.get("description", "")
+                    )
 
 # LLM Provider selection
 provider_info = st.session_state.providers_info
@@ -185,45 +311,6 @@ st.session_state.selected_provider = selected_provider
 if default_provider and selected_provider != default_provider:
     st.sidebar.warning(f"Default provider '{default_provider}' is not available. Using '{selected_provider}' instead.")
 
-# Data source options
-st.sidebar.markdown("### Data Sources")
-use_rag = st.sidebar.checkbox("Use RAG (Vector Database)", value=True)
-use_sql = st.sidebar.checkbox("Query SQL Database", value=False)
-use_mongo = st.sidebar.checkbox("Query MongoDB", value=False)
-
-# Memory system options
-memory_types = st.session_state.memory_types
-if memory_types.get("enabled", False):
-    st.sidebar.markdown("### Memory Systems")
-    use_short_term = st.sidebar.checkbox(
-        f"{memory_types['types']['short_term']['name']}",
-        value=True,
-        help=memory_types['types']['short_term']['description']
-    )
-    
-    use_episodic = st.sidebar.checkbox(
-        f"{memory_types['types']['episodic']['name']}",
-        value=True,
-        help=memory_types['types']['episodic']['description']
-    )
-    
-    use_procedural = st.sidebar.checkbox(
-        f"{memory_types['types']['procedural']['name']}",
-        value=False,
-        help=memory_types['types']['procedural']['description']
-    )
-    
-    st.sidebar.markdown("### Memory Visibility")
-    st.session_state.show_memory_details = st.sidebar.checkbox(
-        "Show Memory Details",
-        value=st.session_state.show_memory_details,
-        help="Display which memory systems were used in each response"
-    )
-else:
-    use_short_term = False
-    use_episodic = False
-    use_procedural = False
-
 # About section
 st.sidebar.markdown("---")
 st.sidebar.markdown("### About")
@@ -256,7 +343,7 @@ st.markdown(
 )
 
 # Display previous conversations
-if memory_types.get("enabled", False) and use_episodic:
+if provider_info.get("enabled", False) and provider_info.get("types", {}).get("episodic_memory", False):
     try:
         # Get previous conversations
         response = requests.get(f"{API_URL}/api/chat/conversations")
@@ -291,7 +378,7 @@ for message in st.session_state.messages:
             st.dataframe(memory_df, hide_index=True)
 
 # Chat input
-if prompt := st.chat_input("Ask something..."):
+if prompt := st.chat_input("Ask a question..."):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
     
@@ -299,56 +386,52 @@ if prompt := st.chat_input("Ask something..."):
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(prompt)
     
-    # Display thinking indicator
-    with st.chat_message("assistant", avatar="🧠"):
+    # Display assistant message with loading indicator
+    with st.chat_message("assistant", avatar="🤖"):
         message_placeholder = st.empty()
         message_placeholder.markdown("Thinking...")
         
         try:
-            # Prepare the request
+            # Prepare request data
             request_data = {
                 "message": prompt,
                 "conversation_id": st.session_state.conversation_id,
                 "provider": selected_provider,
-                "use_rag": use_rag,
-                "use_sql": use_sql,
-                "use_mongo": use_mongo,
-                "use_short_term_memory": use_short_term,
-                "use_episodic_memory": use_episodic,
-                "use_procedural_memory": use_procedural
+                "agent_id": selected_agent_id,
+                "agent_settings": current_settings  # Include all agent settings
             }
             
-            # Call the API
-            response = requests.post(
-                f"{API_URL}/api/chat",
-                json=request_data
-            )
+            # Send request to API
+            response = requests.post(f"{API_URL}/api/chat", json=request_data)
+            response.raise_for_status()
+            response_data = response.json()
             
-            if response.status_code == 200:
-                result = response.json()
-                
-                # Update conversation ID if it's new
-                if st.session_state.conversation_id is None:
-                    st.session_state.conversation_id = result.get("conversation_id")
-                
-                # Display the response
-                message_placeholder.markdown(result["message"])
-                
-                # Add assistant message to chat history
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": result["message"],
-                    "memory_sources": result.get("memory_sources", {})
-                })
-                
-                # Display memory details if enabled
-                if st.session_state.show_memory_details and result.get("memory_sources"):
+            # Update conversation ID if it's new
+            if not st.session_state.conversation_id:
+                st.session_state.conversation_id = response_data.get("conversation_id")
+            
+            # Display the response
+            message_placeholder.markdown(response_data["message"])
+            
+            # Add assistant message to chat history
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response_data["message"],
+                "memory_sources": response_data.get("memory_sources", {}),
+                "agent_id": response_data.get("agent_id"),
+                "agent_name": response_data.get("agent_name")
+            })
+            
+            # Display memory details if enabled
+            if st.session_state.show_memory_details and response_data.get("memory_sources"):
+                with st.expander("Memory Sources Used"):
                     memory_df = pd.DataFrame([
                         {"Memory Type": k, "Used": "✅" if v else "❌"} 
-                        for k, v in result.get("memory_sources", {}).items()
+                        for k, v in response_data.get("memory_sources", {}).items()
                     ])
                     st.dataframe(memory_df, hide_index=True)
-            else:
-                message_placeholder.error(f"Error: {response.text}")
-        except Exception as e:
+            
+        except requests.exceptions.RequestException as e:
             message_placeholder.error(f"Error: {str(e)}")
+        except Exception as e:
+            message_placeholder.error(f"Unexpected error: {str(e)}")

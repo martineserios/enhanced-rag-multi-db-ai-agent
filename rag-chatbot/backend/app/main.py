@@ -25,6 +25,7 @@ from app.services.database.postgres import init_postgres
 from app.services.database.mongo import init_mongo
 from app.services.memory.manager import init_memory_manager
 from app.services.llm.factory import check_llm_providers, close_llm_services
+from app.services.agents.registry import AgentRegistry
 
 
 logger = get_logger(__name__)
@@ -67,6 +68,26 @@ async def lifespan(app: FastAPI):
         llm_status = await check_llm_providers(settings)
         logger.info("LLM providers status", extra={"llm_status": llm_status})
         
+        # --- Agent Registration ---
+        logger.info("Starting agent registration.")
+        try:
+            from app.services.agents.standard.service import StandardAgent
+            from app.services.agents.standard_graph.service import StandardGraphAgent
+            from app.services.agents.medical_research.service import MedicalResearchAgent
+            from app.services.agents.template_agent.service import TemplateAgent
+
+            AgentRegistry.register(StandardAgent)
+            AgentRegistry.register(StandardGraphAgent)
+            AgentRegistry.register(MedicalResearchAgent)
+            AgentRegistry.register(TemplateAgent)
+            logger.info("Agent registration complete.")
+
+        except Exception as e:
+             logger.error(f"Error during agent registration: {e}", exc_info=True)
+             # Depending on how critical agent registration is, you might want to raise the exception
+             # raise e # Uncomment to fail startup if agent registration fails
+        # --- End Agent Registration ---
+
         # Application startup complete
         logger.info(f"{settings.app_name} startup complete")
         
@@ -162,7 +183,12 @@ def create_application() -> FastAPI:
     
     # Customize OpenAPI schema
     def custom_openapi():
-        """Generate custom OpenAPI schema."""
+        """
+        Generate custom OpenAPI schema.
+        
+        This function is called by FastAPI to generate the OpenAPI schema.
+        We can customize the schema here if needed.
+        """
         if app.openapi_schema:
             return app.openapi_schema
         
@@ -173,7 +199,15 @@ def create_application() -> FastAPI:
             routes=app.routes,
         )
         
-        # Customize schema here if needed
+        # Example customization: Add a security scheme
+        # openapi_schema["components"] = {"securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer"}}}
+        # openapi_schema["security"] = [{"bearerAuth": []}]
+
+        # Add external documentation link
+        # openapi_schema["externalDocs"] = {
+        #     "description": "Find more info here",
+        #     "url": "https://example.com/docs"
+        # }
         
         app.openapi_schema = openapi_schema
         return app.openapi_schema

@@ -178,6 +178,14 @@ class ProceduralMemory(MemorySystem[Dict[str, Any]]):
                     FOR (p:Procedure) ON (p.updated_at)
                     """,
                 "name": "procedure_updated_at"
+            },
+            # Full-text index for step descriptions
+            {
+                "query": """
+                    CREATE FULLTEXT INDEX step_description IF NOT EXISTS
+                    FOR (s:Step) ON EACH [s.description]
+                    """,
+                "name": "step_description"
             }
         ]
         
@@ -190,11 +198,17 @@ class ProceduralMemory(MemorySystem[Dict[str, Any]]):
                             "Ensured constraint/index: %s", constraint["name"]
                         )
                     except Exception as e:
-                        self.logger.warning(
-                            "Failed to create constraint/index %s: %s",
-                            constraint["name"], str(e)
-                        )
-                        # Continue with other constraints/indexes even if one fails
+                        # Log warning but continue for full-text index (requires Enterprise)
+                        if "FULLTEXT" in constraint["query"]:
+                            self.logger.warning(
+                                "Full-text index creation skipped (requires Neo4j Enterprise): %s",
+                                constraint["name"]
+                            )
+                        else:
+                            self.logger.warning(
+                                "Failed to create constraint/index %s: %s",
+                                constraint["name"], str(e)
+                            )
                         continue
                 
                 self.logger.info("Completed ensuring constraints and indexes")
@@ -383,45 +397,34 @@ class ProceduralMemory(MemorySystem[Dict[str, Any]]):
         """
         try:
             async with self.driver.session() as session:
-                # Use full-text search if available, otherwise use CONTAINS
-                try:
-                    # Try full-text search first (requires Neo4j Enterprise)
-                    # First check if full-text index exists
-                    index_check = await session.run(
-                        """
-                        CALL db.indexes() YIELD name, type, entityType, labelsOrTypes, properties
-                        WHERE type = 'FULLTEXT' AND 'step_description' IN name
-                        RETURN count(*) > 0 as has_index
-                        """
-                    )
-                    has_index = await index_check.single()
-                    
-                    if has_index and has_index["has_index"]:
-                        procedures_result = await session.run(
-                            """
-                            CALL db.index.fulltext.queryNodes("step_description", $query) 
-                            YIELD node, score
-                            MATCH (p:Procedure)-[:HAS_STEP]->(node)
-                            RETURN DISTINCT p.name AS procedure_name, score
-                            ORDER BY score DESC
-                            LIMIT $limit
-                            """,
-                            {"query": query, "limit": limit}
-                        )
-                        procedures = await procedures_result.values()
-                        procedure_names = [row[0] for row in procedures]
-                    else:
-                        # If full-text index doesn't exist, use CONTAINS search
-                        raise Exception("Full-text index not found")
-                except Exception as e:
-                    self.logger.warning(f"Full-text search failed: {str(e)}")
-                    # Fallback to CONTAINS search if full-text search fails
-                    # Fallback to CONTAINS search
+                # First try to use CONTAINS search (works in all Neo4j versions)
+                procedures_result = await session.run(
+                    """
+                    MATCH (p:Procedure)
+                    OPTIONAL MATCH (p)-[:FIRST_STEP]->(s:Step)
+                    WHERE toLower(p.name) CONTAINS toLower($query)
+                       OR toLower(p.description) CONTAINS toLower($query)
+                       OR (s IS NOT NULL AND toLower(s.description) CONTAINS toLower($query))
+                    RETURN DISTINCT p.name AS procedure_name
+                    ORDER BY p.name
+                    LIMIT $limit
+                    """,
+                    {"query": query.lower(), "limit": limit}
+                )
+                
+                values = await procedures_result.values()
+                procedure_names = [row[0] for row in values]
+                
+                # If no results found, try a more flexible search
+                if not procedure_names:
                     procedures_result = await session.run(
                         """
-                        MATCH (p:Procedure)-[:HAS_STEP]->(s:Step)
-                        WHERE toLower(s.description) CONTAINS toLower($query) 
-                           OR toLower(p.name) CONTAINS toLower($query)
+                        MATCH (p:Procedure)
+                        OPTIONAL MATCH (p)-[:FIRST_STEP]->(s:Step)
+                        WHERE any(word IN split(toLower($query), ' ') 
+                            WHERE toLower(p.name) CONTAINS word
+                            OR toLower(p.description) CONTAINS word
+                            OR (s IS NOT NULL AND toLower(s.description) CONTAINS word))
                         RETURN DISTINCT p.name AS procedure_name
                         ORDER BY p.name
                         LIMIT $limit
@@ -524,7 +527,7 @@ class ProceduralMemory(MemorySystem[Dict[str, Any]]):
                 await session.run(
                     """
                     MATCH (p:Procedure)
-                    OPTIONAL MATCH (p)-[:HAS_STEP]->(s:Step)
+                    OPTIONAL MATCH (p)-[:FIRST_STEP]->(s:Step)
                     DETACH DELETE p, s
                     """
                 )

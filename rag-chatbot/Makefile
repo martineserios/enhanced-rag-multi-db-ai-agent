@@ -26,10 +26,13 @@ help:
 	@echo "  make dev           - Run both frontend and backend in development mode"
 	@echo "${GREEN}Docker Operations:${NC}"
 	@echo "  make build         - Build all Docker images"
+	@echo "  make build SERVICE - Build a specific service (e.g., make build frontend)"
 	@echo "  make up            - Start all services in detached mode"
 	@echo "  make down          - Stop all services"
 	@echo "  make logs          - Show logs for all services"
+	@echo "  make logs SERVICE  - Show logs for a specific service"
 	@echo "  make restart       - Restart all services"
+	@echo "  make restart SERVICE - Restart a specific service (e.g., make restart backend)"
 	@echo "  make ps            - List running containers"
 	@echo "${GREEN}Database Management:${NC}"
 	@echo "  make db-init       - Initialize all databases"
@@ -49,12 +52,15 @@ help:
 # Development environment setup
 setup:
 	@echo "${CYAN}Setting up development environment...${NC}"
+	@echo "${YELLOW}Installing uv...${NC}"
+	curl -LsSf https://astral.sh/uv/install.sh | sh
 	@echo "${YELLOW}Creating virtual environment...${NC}"
-	$(PYTHON) -m venv $(VENV)
+	uv venv $(VENV)
 	@echo "${YELLOW}Installing backend dependencies...${NC}"
-	. $(VENV)/bin/activate && cd $(BACKEND_DIR) && pip install -r requirements.txt
+	. $(VENV)/bin/activate && cd $(BACKEND_DIR) && \
+		uv pip install -e ".[viz,dev,test]"
 	@echo "${YELLOW}Installing frontend dependencies...${NC}"
-	. $(VENV)/bin/activate && cd $(FRONTEND_DIR) && pip install -r requirements.txt
+	. $(VENV)/bin/activate && cd $(FRONTEND_DIR) && uv pip install -e .
 	@echo "${GREEN}Setup complete!${NC}"
 
 # Development servers
@@ -121,13 +127,84 @@ check-services:
 
 # Docker operations
 build:
-	@echo "${CYAN}Building all Docker images...${NC}"
-	$(DOCKER_COMPOSE) build
-	@echo "\n${GREEN}Build complete!${NC}"
-	@echo "${YELLOW}Next steps:${NC}"
-	@echo "1. Run 'make up' to start the services"
-	@echo "2. Run 'make check-services' to verify all services are running"
-	@echo "3. Access the application at http://localhost:8501"
+	@if [ "$(filter-out $@,$(MAKECMDGOALS))" != "" ]; then \
+		SERVICE="$(filter-out $@,$(MAKECMDGOALS))"; \
+		echo "${CYAN}Building $$SERVICE image...${NC}"; \
+		$(DOCKER_COMPOSE) build --no-cache $$SERVICE; \
+		echo "\n${GREEN}$$SERVICE build complete!${NC}"; \
+		echo "${YELLOW}Next steps:${NC}"; \
+		echo "1. Run 'make up' to start all services"; \
+		echo "2. Or run 'docker-compose up -d $$SERVICE' to start just $$SERVICE"; \
+		echo "3. Run 'make check-services' to verify service status"; \
+	else \
+		echo "${CYAN}Building all Docker images...${NC}"; \
+		echo "${YELLOW}Cleaning up old images...${NC}"; \
+		docker system prune -f; \
+		echo "${YELLOW}Building images...${NC}"; \
+		$(DOCKER_COMPOSE) build --no-cache; \
+		echo "\n${GREEN}Build complete!${NC}"; \
+		echo "${YELLOW}Next steps:${NC}"; \
+		echo "1. Run 'make up' to start the services"; \
+		echo "2. Run 'make check-services' to verify all services are running"; \
+		echo "3. Access the application at http://localhost:8501"; \
+	fi
+
+restart:
+	@if [ "$(filter-out $@,$(MAKECMDGOALS))" != "" ]; then \
+		SERVICE="$(filter-out $@,$(MAKECMDGOALS))"; \
+		echo "${CYAN}Restarting $$SERVICE service...${NC}"; \
+		echo "${YELLOW}Stopping $$SERVICE...${NC}"; \
+		$(DOCKER_COMPOSE) stop $$SERVICE; \
+		$(DOCKER_COMPOSE) rm -f $$SERVICE; \
+		echo "${YELLOW}Starting $$SERVICE again...${NC}"; \
+		$(DOCKER_COMPOSE) up -d $$SERVICE; \
+		echo "\n${GREEN}$$SERVICE restart initiated!${NC}"; \
+		echo "${YELLOW}Waiting for $$SERVICE to initialize...${NC}"; \
+		sleep 5; \
+		if [ "$$SERVICE" = "frontend" ]; then \
+			echo "${YELLOW}Checking frontend status...${NC}"; \
+			curl -s -f http://localhost:8501/_stcore/health > /dev/null && \
+			echo "${GREEN}Frontend is responding${NC}" || \
+			echo "${RED}Frontend is not responding yet${NC}"; \
+		elif [ "$$SERVICE" = "backend" ]; then \
+			echo "${YELLOW}Checking backend status...${NC}"; \
+			curl -s -f http://localhost:8000/health > /dev/null && \
+			echo "${GREEN}Backend is responding${NC}" || \
+			echo "${RED}Backend is not responding yet${NC}"; \
+		fi; \
+	else \
+		echo "${CYAN}Restarting all services...${NC}"; \
+		echo "${YELLOW}Stopping all services...${NC}"; \
+		$(DOCKER_COMPOSE) down; \
+		echo "${YELLOW}Removing any stale containers...${NC}"; \
+		$(DOCKER_COMPOSE) rm -f; \
+		echo "${YELLOW}Starting services again...${NC}"; \
+		sleep 2; \
+		if ! $(DOCKER_COMPOSE) up -d; then \
+			echo "${RED}Error: Failed to restart services${NC}"; \
+			echo "${YELLOW}Please check the logs: make logs${NC}"; \
+			exit 1; \
+		fi; \
+		echo "\n${GREEN}Services restart initiated!${NC}"; \
+		echo "${YELLOW}Waiting for services to initialize...${NC}"; \
+		sleep 15; \
+		$(MAKE) check-services; \
+	fi
+
+# This allows passing arguments to the build and restart targets
+%:
+	@:
+
+# Update logs target to support individual services
+logs:
+	@if [ "$(filter-out $@,$(MAKECMDGOALS))" != "" ]; then \
+		SERVICE="$(filter-out $@,$(MAKECMDGOALS))"; \
+		echo "${CYAN}Showing logs for $$SERVICE service (press Ctrl+C to exit)...${NC}"; \
+		$(DOCKER_COMPOSE) logs -f $$SERVICE; \
+	else \
+		echo "${CYAN}Showing logs for all services (press Ctrl+C to exit)...${NC}"; \
+		$(DOCKER_COMPOSE) logs -f; \
+	fi
 
 up:
 	@echo "${CYAN}Starting all services in detached mode...${NC}"
@@ -155,28 +232,6 @@ down:
 	@echo "\n${GREEN}All services stopped successfully!${NC}"
 	@echo "${YELLOW}Note:${NC} All data in ephemeral volumes has been removed"
 	@echo "Run 'make up' to start the services again"
-
-logs:
-	@echo "${CYAN}Showing logs for all services (press Ctrl+C to exit)...${NC}"
-	$(DOCKER_COMPOSE) logs -f
-
-restart:
-	@echo "${CYAN}Restarting all services...${NC}"
-	@echo "${YELLOW}Stopping all services...${NC}"
-	$(DOCKER_COMPOSE) down
-	@echo "${YELLOW}Removing any stale containers...${NC}"
-	$(DOCKER_COMPOSE) rm -f
-	@echo "${YELLOW}Starting services again...${NC}"
-	@sleep 2
-	@if ! $(DOCKER_COMPOSE) up -d; then \
-		echo "${RED}Error: Failed to restart services${NC}"; \
-		echo "${YELLOW}Please check the logs: make logs${NC}"; \
-		exit 1; \
-	fi
-	@echo "\n${GREEN}Services restart initiated!${NC}"
-	@echo "${YELLOW}Waiting for services to initialize...${NC}"
-	@sleep 15
-	@$(MAKE) check-services
 
 ps:
 	@echo "${CYAN}Listing running containers...${NC}"
@@ -302,6 +357,42 @@ shell-frontend:
 	@echo "${CYAN}Opening a shell in the frontend container...${NC}"
 	$(DOCKER_COMPOSE) exec frontend /bin/bash
 
+# New development commands
+dev-shell:
+	@echo "${CYAN}Opening development shell in backend container...${NC}"
+	$(DOCKER_COMPOSE) exec backend /bin/bash
+
+dev-logs:
+	@echo "${CYAN}Showing development logs (press Ctrl+C to exit)...${NC}"
+	$(DOCKER_COMPOSE) logs -f backend frontend
+
+dev-test:
+	@echo "${CYAN}Running tests in development mode...${NC}"
+	$(DOCKER_COMPOSE) exec backend pytest -v --cov=app --cov-report=term-missing
+
+dev-lint:
+	@echo "${CYAN}Running linting in development mode...${NC}"
+	$(DOCKER_COMPOSE) exec backend black --check app tests && \
+	$(DOCKER_COMPOSE) exec backend flake8 app tests && \
+	$(DOCKER_COMPOSE) exec backend mypy app
+
+dev-clean:
+	@echo "${CYAN}Cleaning development environment...${NC}"
+	@echo "${YELLOW}Removing Python cache files...${NC}"
+	find . -type d -name "__pycache__" -exec rm -r {} +
+	find . -type d -name ".pytest_cache" -exec rm -r {} +
+	find . -type d -name ".coverage" -delete
+	find . -type f -name "*.pyc" -delete
+	@echo "${YELLOW}Cleaning uv cache...${NC}"
+	uv cache clean
+	@echo "${YELLOW}Cleaning Docker environment...${NC}"
+	docker system prune -f
+	@echo "${YELLOW}Removing virtual environment...${NC}"
+	rm -rf $(VENV)
+	@echo "\n${GREEN}Clean complete!${NC}"
+	@echo "${YELLOW}Run 'make setup' to recreate the development environment${NC}"
+
 .PHONY: help setup dev-backend dev-frontend dev build up down logs restart ps \
         db-init db-backup db-restore test test-backend test-frontend lint \
-        clean prune shell-backend shell-frontend check-services
+        clean prune shell-backend shell-frontend check-services \
+        dev-shell dev-logs dev-test dev-lint dev-clean

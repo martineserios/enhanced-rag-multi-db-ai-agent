@@ -231,6 +231,211 @@ This approach enables the chatbot to:
 - Learn from past conversations (episodic memory)
 - Understand step-by-step processes (procedural memory)
 
+## Domain-Specific Terminology Validation
+
+The system implements a robust terminology validation system to ensure accurate domain-specific processing. This component is particularly important for specialized agents like the Medical Research Agent and Template Agent.
+
+### Purpose and Design
+
+The terminology validation system serves several key purposes:
+1. **Domain Relevance**: Ensures queries contain appropriate domain-specific terminology
+2. **Term Accuracy**: Validates that terms are used in the correct context
+3. **Query Enhancement**: Helps improve query understanding by identifying valid domain terms
+4. **Quality Control**: Prevents processing of queries that lack relevant domain terminology
+
+### Implementation Evolution
+
+The system has evolved through several iterations:
+
+1. **Initial Implementation (Dual Validation)**:
+   - Used both `valid_terms` and `invalid_terms` arrays
+   - Required complex JSON parsing and validation
+   - Maintained separate lists of valid and invalid terms
+   - Issues encountered:
+     - JSON parsing errors due to complex response structure
+     - Inconsistent validation results
+     - Increased processing overhead
+
+2. **Current Implementation (Invalid-Only Validation)**:
+   - Simplified to only track `invalid_terms`
+   - Assumes all detected terms are valid unless explicitly marked invalid
+   - Benefits:
+     - More robust JSON parsing
+     - Simpler validation logic
+     - Reduced processing overhead
+     - Better error handling
+     - More consistent results
+
+### Validation Process
+
+The current validation process follows these steps:
+
+1. **Pattern Detection**:
+   - Uses regex patterns to identify potential domain terms
+   - Categorizes terms based on domain-specific patterns
+   - Example: Medical terms are categorized as diagnosis, treatment, symptoms, etc.
+
+2. **LLM Validation**:
+   - Sends detected terms to LLM for context validation
+   - LLM returns only invalid terms in a simple JSON structure
+   - Example response: `{"invalid_terms": ["term1", "term2"]}`
+
+3. **Term Processing**:
+   - Removes invalid terms from detected categories
+   - Maintains original category structure
+   - Removes empty categories
+   - Logs invalid terms for monitoring
+
+### Benefits
+
+The terminology validation system provides several benefits:
+
+1. **Quality Assurance**:
+   - Ensures responses are domain-appropriate
+   - Prevents processing of irrelevant queries
+   - Maintains response quality standards
+
+2. **Query Understanding**:
+   - Improves query interpretation
+   - Helps identify key domain concepts
+   - Enables better context retrieval
+
+3. **Error Prevention**:
+   - Catches misused terminology early
+   - Prevents processing of inappropriate queries
+   - Reduces error rates in responses
+
+4. **Monitoring and Improvement**:
+   - Tracks invalid term usage
+   - Provides insights for system improvement
+   - Helps identify common user misconceptions
+
+### Lessons Learned
+
+The evolution of the terminology validation system taught us several important lessons:
+
+1. **Simplicity is Key**:
+   - Complex validation structures lead to more errors
+   - Simpler JSON responses are more reliable
+   - Fewer moving parts mean better maintainability
+
+2. **Error Handling**:
+   - Robust error handling is crucial
+   - Graceful degradation is better than complex validation
+   - Clear logging helps with debugging
+
+3. **Performance Considerations**:
+   - Validation overhead should be minimized
+   - Balance between thoroughness and efficiency
+   - Cache validation results when possible
+
+4. **User Experience**:
+   - Clear error messages for invalid terms
+   - Helpful suggestions for query improvement
+   - Transparent validation process
+
+### Troubleshooting Common Issues
+
+The terminology validation system may encounter several common issues:
+
+1. **JSON Parsing Errors**:
+   - **Symptom**: Errors like `Error validating terminology: '\n  "invalid_terms"'`
+   - **Cause**: LLM response not properly formatted as JSON
+   - **Solutions**:
+     - Ensure system prompt explicitly requests JSON format
+     - Add response cleaning to remove extra whitespace/newlines
+     - Implement robust JSON parsing with fallback handling
+     - Example fix:
+       ```python
+       # Clean response before parsing
+       validation = validation.strip()
+       start_idx = validation.find('{')
+       end_idx = validation.rfind('}') + 1
+       if start_idx != -1 and end_idx > 0:
+           validation = validation[start_idx:end_idx]
+       ```
+
+2. **Invalid Term Detection**:
+   - **Symptom**: False positives/negatives in term detection
+   - **Cause**: Regex patterns too strict/loose or LLM misclassification
+   - **Solutions**:
+     - Regularly review and update regex patterns
+     - Implement term frequency analysis
+     - Add confidence scores to term detection
+     - Log and analyze invalid term patterns
+
+3. **Performance Issues**:
+   - **Symptom**: Slow validation response times
+   - **Cause**: Too many terms or complex validation rules
+   - **Solutions**:
+     - Implement term caching
+     - Batch process terms when possible
+     - Optimize regex patterns
+     - Set reasonable limits on term count
+
+4. **LLM Response Inconsistency**:
+   - **Symptom**: Varying validation results for same terms
+   - **Cause**: LLM temperature settings or prompt ambiguity
+   - **Solutions**:
+     - Use lower temperature for validation
+     - Provide clear examples in prompts
+     - Implement response validation
+     - Cache common validation results
+
+### Best Practices for Implementation
+
+When implementing or modifying the terminology validation system:
+
+1. **Prompt Engineering**:
+   ```python
+   TERMINOLOGY_VALIDATION_PROMPT = (
+       "Validate the following domain-specific terms in the query. "
+       "Return ONLY a JSON object with this exact structure:\n"
+       "{\n"
+       '  "invalid_terms": ["term1", "term2"]\n'
+       "}\n"
+       "Rules:\n"
+       "1. Return ONLY the JSON object, no other text\n"
+       "2. Keep terms exactly as they appear in the query\n"
+       "3. If all terms are valid, return empty array\n"
+   )
+   ```
+
+2. **Error Handling**:
+   ```python
+   try:
+       validation_data = json.loads(validation)
+       if not isinstance(validation_data, dict):
+           raise ValidationError("Invalid response format")
+       invalid_terms = validation_data.get("invalid_terms", [])
+       if not isinstance(invalid_terms, list):
+           logger.warning("invalid_terms must be a list")
+           invalid_terms = []
+   except json.JSONDecodeError as e:
+       logger.error(f"JSON parsing error: {str(e)}")
+       # Fallback to original terms
+   ```
+
+3. **Logging and Monitoring**:
+   ```python
+   # Log validation attempts
+   logger.info(f"Validating terms: {terms}")
+   # Log invalid terms
+   if invalid_terms:
+       logger.info(f"Invalid terms detected: {invalid_terms}")
+   # Log validation metrics
+   metrics["validation_time"] = time.time() - start_time
+   metrics["terms_validated"] = len(terms)
+   metrics["invalid_terms_count"] = len(invalid_terms)
+   ```
+
+4. **Testing**:
+   - Unit test validation logic
+   - Test with various term combinations
+   - Verify JSON parsing robustness
+   - Test error handling scenarios
+   - Monitor validation performance
+
 ## Testing
 
 The project includes comprehensive tests for all components:

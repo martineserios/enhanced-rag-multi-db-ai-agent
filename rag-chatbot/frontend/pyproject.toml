@@ -1,0 +1,114 @@
+[project]
+name = "rag-chatbot-frontend"
+version = "0.1.0"
+description = "Frontend for RAG Chatbot using Streamlit"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.32.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.6.0",
+    "httpx>=0.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.0",
+    "black>=24.1.0",
+    "mypy>=1.8.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.hatch.build]
+include = [
+    "app.py",
+    "utils/**/*.py",
+    "pages/**/*.py",
+    "components/**/*.py",
+]
+
+[tool.ruff]
+# Enable pycodestyle (`E`), Pyflakes (`F`), and import sorting (`I`) codes
+select = ["E", "F", "I", "B", "C4", "UP", "N", "W", "ANN", "S", "A", "COM", "TCH", "RUF"]
+ignore = ["ANN101", "ANN102", "ANN401"]
+
+# Allow autofix for all enabled rules (when `--fix` is used)
+fixable = ["ALL"]
+unfixable = []
+
+# Exclude a variety of commonly ignored directories.
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+# Same as Black.
+line-length = 88
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+# Assume Python 3.11
+target-version = "py311"
+
+[tool.ruff.mccabe]
+# Unlike Flake8, default to a complexity level of 10.
+max-complexity = 10
+
+[tool.ruff.isort]
+known-first-party = ["app"]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["S101", "ANN"]
+
+[tool.ruff.pydantic]
+# Allow direct instantiation of Pydantic models
+allow-direct-instantiation = true
+
+[tool.ruff.pycodestyle]
+max-doc-length = 88
+
+[tool.ruff.pyflakes]
+# Allow `raise` from `except` blocks. Use in combination with
+# `extend-ignore = ["E722"]` to avoid using bare except.
+allow-except-raise = true
+
+[tool.ruff.pytest]
+# Allow use of `pytest.fixture` without `@pytest.fixture()` decorator.
+allow-fixture-without-decorator = true
+
+[tool.ruff.pyupgrade]
+# Keep runtime typing within Python 3.11 bounds.
+target-version = "py311"
+
+[tool.ruff.unused-arguments]
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$" 
