@@ -135,4 +135,4 @@ class AgentSettingsResponse(BaseModel):
     agent_id: str
     agent_name: str
     settings: Dict[str, Any]
-    schema: Dict[str, Any]
+    settings_schema: Dict[str, Any]

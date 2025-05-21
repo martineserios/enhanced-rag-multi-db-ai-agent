@@ -73,12 +73,12 @@ async def lifespan(app: FastAPI):
         try:
             from app.services.agents.standard.service import StandardAgent
             from app.services.agents.standard_graph.service import StandardGraphAgent
-            from app.services.agents.medical_research.service import MedicalResearchAgent
+            from app.services.agents.clinical_agent.service import ClinicalAgent
             from app.services.agents.template_agent.service import TemplateAgent
 
             AgentRegistry.register(StandardAgent)
             AgentRegistry.register(StandardGraphAgent)
-            AgentRegistry.register(MedicalResearchAgent)
+            AgentRegistry.register(ClinicalAgent)
             AgentRegistry.register(TemplateAgent)
             logger.info("Agent registration complete.")
 

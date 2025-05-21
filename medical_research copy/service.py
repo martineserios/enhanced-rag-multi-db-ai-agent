@@ -13,7 +13,7 @@ import logging
 from app.services.agents.base import BaseAgent, AgentError
 from app.api.models.chat import ChatRequest, ChatResponse
 from app.core.logging import get_logger
-from app.services.agents.medical_research.graph import create_medical_agent_graph, MedicalChatState
+from app.services.agents.clinical_agent.graph import create_medical_agent_graph, MedicalChatState
 
 logger = get_logger(__name__)
 

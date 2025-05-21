@@ -10,22 +10,6 @@ from app.services.agents.base import BasePromptTemplate
 class TemplatePromptTemplate(BasePromptTemplate):
     """Prompt template for the template agent."""
     
-    # Validation prompts
-    QUERY_VALIDATION_PROMPT = (
-        "Validate if this query is appropriate for domain-specific processing. "
-        "Check for:\n"
-        "1. Domain relevance\n"
-        "2. Query clarity\n"
-        "3. Appropriate scope\n\n"
-        "Query: {query}\n\n"
-        "Provide validation in JSON format with the following structure:\n"
-        "{\n"
-        '  "is_appropriate": boolean,\n'
-        '  "concerns": ["concern1", "concern2"],\n'
-        '  "suggestions": ["suggestion1", "suggestion2"]\n'
-        "}"
-    )
-    
     # Processing prompts
     QUERY_ENHANCEMENT_PROMPT = (
         "Enhance this query with relevant domain-specific terminology and concepts. "

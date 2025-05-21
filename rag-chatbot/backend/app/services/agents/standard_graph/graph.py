@@ -266,7 +266,6 @@ def create_agent_graph(settings: Settings) -> Graph:
 
     # Define the nodes
     settings_instance = settings # Use the settings instance passed to the function
-    validation_node = ValidationNode(settings=settings_instance)
     context_retrieval_node = ContextRetrievalNode(settings=settings_instance)
     llm_response_node = LLMResponseNode(settings=settings_instance)
     memory_storage_node = MemoryStorageNode(settings=settings_instance)
@@ -276,24 +275,15 @@ def create_agent_graph(settings: Settings) -> Graph:
     workflow = StateGraph(ChatState)
 
     # Add nodes
-    workflow.add_node("validate_request", validation_node)
     workflow.add_node("retrieve_context", context_retrieval_node)
     workflow.add_node("generate_response", llm_response_node)
     workflow.add_node("store_memory", memory_storage_node)
     workflow.add_node("error_handler", error_handler_node)
 
     # Set the entry point
-    workflow.set_entry_point("validate_request")
+    workflow.set_entry_point("retrieve_context")
 
     # Add edges based on the router function
-    workflow.add_conditional_edges(
-        "validate_request",
-        router,
-        {
-            "context_retrieval": "retrieve_context",
-            "error": "error_handler",
-        },
-    )
     workflow.add_conditional_edges(
         "retrieve_context",
         router,
