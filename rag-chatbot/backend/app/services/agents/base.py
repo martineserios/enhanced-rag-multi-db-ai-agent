@@ -476,6 +476,44 @@ class BaseAgent(ABC):
             metadata=metadata
         )
 
+    async def get_graph_data(self) -> Dict[str, Any]:
+        """
+        Get graph visualization data for this agent.
+        This method should be implemented by agents that use a graph-based workflow.
+        
+        Returns:
+            Dictionary containing:
+            - nodes: Dict mapping node IDs to node info (name, description, style)
+            - edges: List of edges with from, to, and optional label
+            
+        Example implementation in agent class:
+        ```python
+        async def get_graph_data(self) -> Dict[str, Any]:
+            return {
+                "nodes": {
+                    "node1": {
+                        "name": "Node 1",
+                        "description": "Processes input",
+                        "style": "fill:#f9f,stroke:#333,stroke-width:2px"
+                    },
+                    "node2": {
+                        "name": "Node 2",
+                        "description": "Generates output"
+                    }
+                },
+                "edges": [
+                    {"from": "node1", "to": "node2", "label": "Process"},
+                    {"from": "node2", "to": "END"}
+                ]
+            }
+        ```
+        """
+        # Default implementation returns empty graph
+        return {
+            "nodes": {},
+            "edges": []
+        }
+
 class AgentError(Exception):
     """Base exception for agent-related errors"""
     pass

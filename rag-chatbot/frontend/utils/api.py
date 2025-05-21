@@ -365,6 +365,28 @@ class APIClient:
             return response.json()
         except requests.exceptions.RequestException as e:
             raise APIError(f"Document search failed: {str(e)}")
+    
+    @st.cache_data(ttl=60)  # Cache for 60 seconds
+    def get_agent_graph(_self, agent_id: str) -> Dict[str, Any]:
+        """
+        Get graph visualization data for a specific agent.
+        
+        Args:
+            _self: The instance of the APIClient (ignored by Streamlit caching)
+            agent_id: ID of the agent
+            
+        Returns:
+            Dictionary with graph visualization data including nodes and edges
+            
+        Raises:
+            APIError: If the request fails
+        """
+        try:
+            response = _self.session.get(f"{_self.base_url}/api/chat/agents/{agent_id}/graph", timeout=5)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise APIError(f"Failed to get agent graph: {str(e)}")
 
 
 # Singleton API client

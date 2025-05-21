@@ -95,24 +95,23 @@ class ClinicalAgent(BaseAgent):
         return merged_schema
     
     async def get_available_settings(self) -> Dict[str, Any]:
-        """Get available settings for this agent."""
+        """Get current agent settings"""
         # Get base settings
         base_settings = {
             "short_term_memory": self.settings.memory_enabled,
             "semantic_memory": self.settings.memory_enabled,
             "episodic_memory": self.settings.memory_enabled,
             "procedural_memory": self.settings.memory_enabled,
-            "use_rag": True,
-            "use_sql": True,
-            "use_mongo": True
+            "use_rag": True,  # Always available
+            "use_sql": True,  # Always available
+            "use_mongo": True  # Always available
         }
         
         # Get agent-specific settings
         agent_settings = {
-            "max_history_items": 5,
-            "urgency_threshold": "medio",
-            "include_treatment_options": True,
-            "include_follow_up": True
+            "medical_terms_threshold": getattr(self.settings, "medical_terms_threshold", 0.7),
+            "use_patient_history": getattr(self.settings, "use_patient_history", True),
+            "language": getattr(self.settings, "language", "es")
         }
         
         # Merge settings
@@ -200,4 +199,68 @@ class ClinicalAgent(BaseAgent):
             ],
             "language": "es",
             "version": "1.0.0"
+        }
+
+    async def get_graph_data(self) -> Dict[str, Any]:
+        """
+        Get graph visualization data for the clinical agent.
+        
+        Returns:
+            Dictionary containing nodes and edges for visualization
+        """
+        return {
+            "nodes": {
+                "analyze": {
+                    "name": "Analyze Symptoms",
+                    "description": "Analyzes medical symptoms and terms",
+                    "style": "fill:#e6f3ff,stroke:#333,stroke-width:2px"
+                },
+                "diagnose": {
+                    "name": "Diagnose",
+                    "description": "Generates medical diagnosis and recommendations",
+                    "style": "fill:#e6ffe6,stroke:#333,stroke-width:2px"
+                },
+                "store_memory": {
+                    "name": "Store Memory",
+                    "description": "Stores medical conversation in memory",
+                    "style": "fill:#ffe6e6,stroke:#333,stroke-width:2px"
+                },
+                "error_handler": {
+                    "name": "Error Handler",
+                    "description": "Handles errors in the workflow",
+                    "style": "fill:#ffebcd,stroke:#333,stroke-width:2px"
+                },
+                "END": {
+                    "name": "End",
+                    "description": "End of conversation",
+                    "style": "fill:#f2f2f2,stroke:#333,stroke-width:2px"
+                }
+            },
+            "edges": [
+                {
+                    "from": "analyze",
+                    "to": "diagnose",
+                    "label": "Symptoms Analyzed"
+                },
+                {
+                    "from": "diagnose",
+                    "to": "store_memory",
+                    "label": "Diagnosis Ready"
+                },
+                {
+                    "from": "diagnose",
+                    "to": "error_handler",
+                    "label": "Error"
+                },
+                {
+                    "from": "store_memory",
+                    "to": "END",
+                    "label": "Complete"
+                },
+                {
+                    "from": "error_handler",
+                    "to": "END",
+                    "label": "Error Handled"
+                }
+            ]
         } 

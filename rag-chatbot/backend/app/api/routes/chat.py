@@ -14,7 +14,8 @@ from app.api.models.chat import (
     ChatRequest, ChatResponse, 
     ConversationSummary, ConversationMessage,
     ConversationHistoryResponse, ConversationDeleteResponse,
-    ConversationListResponse, AgentListResponse, AgentSettingsResponse
+    ConversationListResponse, AgentListResponse, AgentSettingsResponse,
+    AgentGraphResponse
 )
 from app.services.agents.factory import AgentFactory
 from app.services.agents.base import AgentError
@@ -106,12 +107,12 @@ async def get_agent_settings(
     """
     try:
         agent = AgentFactory.create_agent(agent_id, settings)
-        return {
-            "agent_id": agent.agent_id,
-            "agent_name": agent.agent_name,
-            "settings": await agent.get_available_settings(),
-            "schema": agent.agent_settings_schema
-        }
+        return AgentSettingsResponse(
+            agent_id=agent.agent_id,
+            agent_name=agent.agent_name,
+            settings=await agent.get_available_settings(),
+            settings_schema=agent.agent_settings_schema
+        )
     except AgentError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -221,3 +222,35 @@ async def get_providers(settings: Settings = Depends(get_settings)):
     except Exception as e:
         logger.exception(f"Error getting providers: {str(e)}")
         return {"providers": [], "default": None, "status": {}}
+
+@router.get("/agents/{agent_id}/graph", response_model=AgentGraphResponse)
+async def get_agent_graph(
+    agent_id: str = Path(..., description="ID of the agent"),
+    settings: Settings = Depends(get_settings)
+):
+    """
+    Get graph visualization data for a specific agent.
+    
+    Args:
+        agent_id: ID of the agent
+        settings: Application settings
+        
+    Returns:
+        Graph visualization data including nodes and edges
+        
+    Raises:
+        HTTPException: If the agent is not found or graph data cannot be retrieved
+    """
+    try:
+        agent = AgentFactory.create_agent(agent_id, settings)
+        graph_data = await agent.get_graph_data()
+        return {
+            "agent_id": agent.agent_id,
+            "agent_name": agent.agent_name,
+            **graph_data
+        }
+    except AgentError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error getting agent graph: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get agent graph: {str(e)}")

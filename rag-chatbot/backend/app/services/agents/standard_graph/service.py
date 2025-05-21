@@ -123,6 +123,75 @@ class StandardGraphAgent(BaseAgent):
         # Merge settings
         return {**base_settings, **agent_settings}
     
+    async def get_graph_data(self) -> Dict[str, Any]:
+        """
+        Get graph visualization data for the standard graph agent.
+        
+        Returns:
+            Dictionary containing nodes and edges for visualization
+        """
+        return {
+            "nodes": {
+                "retrieve_context": {
+                    "name": "Context Retrieval",
+                    "description": "Retrieves context from memory, SQL, and MongoDB",
+                    "style": "fill:#e6f3ff,stroke:#333,stroke-width:2px"
+                },
+                "generate_response": {
+                    "name": "Response Generation",
+                    "description": "Generates response using LLM",
+                    "style": "fill:#e6ffe6,stroke:#333,stroke-width:2px"
+                },
+                "store_memory": {
+                    "name": "Memory Storage",
+                    "description": "Stores conversation in memory systems",
+                    "style": "fill:#ffe6e6,stroke:#333,stroke-width:2px"
+                },
+                "error_handler": {
+                    "name": "Error Handler",
+                    "description": "Handles errors in the workflow",
+                    "style": "fill:#ffe6cc,stroke:#333,stroke-width:2px"
+                },
+                "END": {
+                    "name": "End",
+                    "description": "End of conversation",
+                    "style": "fill:#f2f2f2,stroke:#333,stroke-width:2px"
+                }
+            },
+            "edges": [
+                {
+                    "from": "retrieve_context",
+                    "to": "generate_response",
+                    "label": "Context Ready"
+                },
+                {
+                    "from": "retrieve_context",
+                    "to": "error_handler",
+                    "label": "Error"
+                },
+                {
+                    "from": "generate_response",
+                    "to": "store_memory",
+                    "label": "Response Ready"
+                },
+                {
+                    "from": "generate_response",
+                    "to": "error_handler",
+                    "label": "Error"
+                },
+                {
+                    "from": "store_memory",
+                    "to": "END",
+                    "label": "Complete"
+                },
+                {
+                    "from": "error_handler",
+                    "to": "END",
+                    "label": "Error Handled"
+                }
+            ]
+        }
+    
     async def process_chat_request(self, request: ChatRequest) -> ChatResponse:
         """
         Process a chat message using the standard graph agent.
@@ -173,7 +242,8 @@ class StandardGraphAgent(BaseAgent):
                 "task_decomposition": settings["task_decomposition"]
             },
             "metrics": {},
-            "next_step": None
+            "next_step": None,
+            "provider": request.provider.value if hasattr(request.provider, "value") else request.provider
         }
         
         try:

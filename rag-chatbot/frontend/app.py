@@ -8,6 +8,8 @@ import pandas as pd
 
 # Import our logging utilities
 from utils.logging import setup_logging, get_logger, log_execution_time
+from components.chat import render_chat_interface, render_agent_sidebar_settings # Import necessary function
+from utils.api import get_api_client, APIError # Import APIError
 
 # Configure logging
 logger = get_logger(__name__)
@@ -144,14 +146,14 @@ selected_agent_id = st.sidebar.selectbox(
     "Chat Agent",
     options=list(agent_options.keys()),
     format_func=lambda x: agent_options.get(x, x),
-    index=list(agent_options.keys()).index(st.session_state.selected_agent_id) if st.session_state.selected_agent_id in agent_options else 0,
+    index=list(agent_options.keys()).index(st.session_state.get("selected_agent_id", default_agent_id)) if st.session_state.get("selected_agent_id", default_agent_id) in agent_options else 0,
     help="Select which chat agent to use"
 )
 
 # Update selected agent in session state
 st.session_state.selected_agent_id = selected_agent_id
 
-# Get agent settings if they've changed
+# Get agent settings and graph data if they've changed
 if selected_agent_id != st.session_state.get("last_selected_agent_id"):
     try:
         response = requests.get(f"{API_URL}/api/chat/agents/{selected_agent_id}/settings")
@@ -160,80 +162,25 @@ if selected_agent_id != st.session_state.get("last_selected_agent_id"):
             st.session_state.last_selected_agent_id = selected_agent_id
         else:
             st.error(f"Failed to get agent settings: {response.text}")
+            st.session_state.agent_settings = {}
     except Exception as e:
         st.error(f"Error getting agent settings: {str(e)}")
 
-# Display agent-specific settings
-if st.session_state.agent_settings:
-    agent_info = st.session_state.agent_settings
-    st.sidebar.markdown(f"### {agent_info['agent_name']} Settings")
-    
-    # Get the settings schema and current settings
-    schema = agent_info.get("schema", {})
-    current_settings = agent_info.get("settings", {})
-    
-    # Group settings by category
-    settings_groups = {
-        "Memory Systems": [
-            "short_term_memory",
-            "semantic_memory",
-            "episodic_memory",
-            "procedural_memory"
-        ],
-        "Data Sources": [
-            "use_rag",
-            "use_sql",
-            "use_mongo"
-        ],
-        "Agent Settings": []  # Will be populated with remaining settings
-    }
-    
-    # Add remaining settings to Agent Settings group
-    all_settings = set(schema.get("properties", {}).keys())
-    for group in settings_groups.values():
-        all_settings -= set(group)
-    settings_groups["Agent Settings"] = list(all_settings)
-    
-    # Create settings controls based on the schema
-    for group_name, settings_list in settings_groups.items():
-        if settings_list:  # Only show groups that have settings
-            st.sidebar.markdown(f"#### {group_name}")
-            
-            for prop_name in settings_list:
-                prop_schema = schema.get("properties", {}).get(prop_name, {})
-                if not prop_schema:
-                    continue
-                
-                if prop_schema.get("type") == "boolean":
-                    current_settings[prop_name] = st.sidebar.checkbox(
-                        prop_schema.get("description", prop_name),
-                        value=current_settings.get(prop_name, prop_schema.get("default", False)),
-                        help=prop_schema.get("description", "")
-                    )
-                elif prop_schema.get("type") == "integer":
-                    current_settings[prop_name] = st.sidebar.number_input(
-                        prop_schema.get("description", prop_name),
-                        min_value=prop_schema.get("minimum", 0),
-                        max_value=prop_schema.get("maximum", 100),
-                        value=current_settings.get(prop_name, prop_schema.get("default", 0)),
-                        help=prop_schema.get("description", "")
-                    )
-                elif prop_schema.get("type") == "number":
-                    current_settings[prop_name] = st.sidebar.number_input(
-                        prop_schema.get("description", prop_name),
-                        min_value=float(prop_schema.get("minimum", 0.0)),
-                        max_value=float(prop_schema.get("maximum", 1.0)),
-                        value=float(current_settings.get(prop_name, prop_schema.get("default", 0.0))),
-                        step=0.1,
-                        help=prop_schema.get("description", "")
-                    )
-                elif prop_schema.get("type") == "string" and "enum" in prop_schema:
-                    current_settings[prop_name] = st.sidebar.selectbox(
-                        prop_schema.get("description", prop_name),
-                        options=prop_schema.get("enum", []),
-                        index=prop_schema.get("enum", []).index(current_settings.get(prop_name, prop_schema.get("default", prop_schema.get("enum", [""])[0]))),
-                        help=prop_schema.get("description", "")
-                    )
+    # Also fetch graph data here when agent changes
+    try:
+        api = get_api_client() # Ensure api client is available
+        graph_data = api.get_agent_graph(selected_agent_id)
+        st.session_state.agent_graph_data = graph_data
+    except APIError as e:
+        st.sidebar.warning(f"Could not load agent graph: {str(e)}")
+        st.session_state.agent_graph_data = None
+    except Exception as e:
+        st.sidebar.warning(f"An unexpected error occurred while loading agent graph: {str(e)}")
+        st.session_state.agent_graph_data = None
+
+# Call the dedicated function from chat.py to render sidebar settings and graph
+with st.sidebar:
+    render_agent_sidebar_settings()
 
 # LLM Provider selection
 provider_info = st.session_state.providers_info
@@ -328,110 +275,4 @@ st.sidebar.markdown(
 )
 
 # Main chatbot interface
-st.title("Memory-Enhanced RAG Chatbot")
-st.markdown(
-    """
-    This advanced chatbot uses multiple memory systems to provide more contextual responses:
-    
-    - **Short-term Memory**: Redis-based conversation context
-    - **Semantic Memory**: ChromaDB vector database for documents
-    - **Episodic Memory**: MongoDB for conversation history
-    - **Procedural Memory**: Neo4j graph database for workflows
-    
-    The system combines these memory types using Multi-Context Processing (MCP).
-    """
-)
-
-# Display previous conversations
-if provider_info.get("enabled", False) and provider_info.get("types", {}).get("episodic_memory", False):
-    try:
-        # Get previous conversations
-        response = requests.get(f"{API_URL}/api/chat/conversations")
-        if response.status_code == 200:
-            conversations = response.json().get("conversations", [])
-            
-            if conversations and not st.session_state.conversation_id:
-                with st.expander("Previous Conversations", expanded=False):
-                    for conv in conversations:
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            st.markdown(f"**{conv['latest_message'][:50]}{'...' if len(conv['latest_message']) > 50 else ''}**")
-                        with col2:
-                            if st.button(f"Resume", key=f"resume_{conv['conversation_id']}"):
-                                st.session_state.conversation_id = conv['conversation_id']
-                                st.rerun()
-    except Exception as e:
-        st.warning(f"Could not load previous conversations: {str(e)}")
-
-# Display chat messages
-for message in st.session_state.messages:
-    avatar = "🧑‍💻" if message["role"] == "user" else "🧠"
-    with st.chat_message(message["role"], avatar=avatar):
-        st.markdown(message["content"])
-        
-        # Show memory sources if enabled
-        if st.session_state.show_memory_details and message.get("memory_sources"):
-            memory_df = pd.DataFrame([
-                {"Memory Type": k, "Used": "✅" if v else "❌"} 
-                for k, v in message["memory_sources"].items()
-            ])
-            st.dataframe(memory_df, hide_index=True)
-
-# Chat input
-if prompt := st.chat_input("Ask a question..."):
-    # Add user message to chat history
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # Display user message
-    with st.chat_message("user", avatar="🧑‍💻"):
-        st.markdown(prompt)
-    
-    # Display assistant message with loading indicator
-    with st.chat_message("assistant", avatar="🤖"):
-        message_placeholder = st.empty()
-        message_placeholder.markdown("Thinking...")
-        
-        try:
-            # Prepare request data
-            request_data = {
-                "message": prompt,
-                "conversation_id": st.session_state.conversation_id,
-                "provider": selected_provider,
-                "agent_id": selected_agent_id,
-                "agent_settings": current_settings  # Include all agent settings
-            }
-            
-            # Send request to API
-            response = requests.post(f"{API_URL}/api/chat", json=request_data)
-            response.raise_for_status()
-            response_data = response.json()
-            
-            # Update conversation ID if it's new
-            if not st.session_state.conversation_id:
-                st.session_state.conversation_id = response_data.get("conversation_id")
-            
-            # Display the response
-            message_placeholder.markdown(response_data["message"])
-            
-            # Add assistant message to chat history
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response_data["message"],
-                "memory_sources": response_data.get("memory_sources", {}),
-                "agent_id": response_data.get("agent_id"),
-                "agent_name": response_data.get("agent_name")
-            })
-            
-            # Display memory details if enabled
-            if st.session_state.show_memory_details and response_data.get("memory_sources"):
-                with st.expander("Memory Sources Used"):
-                    memory_df = pd.DataFrame([
-                        {"Memory Type": k, "Used": "✅" if v else "❌"} 
-                        for k, v in response_data.get("memory_sources", {}).items()
-                    ])
-                    st.dataframe(memory_df, hide_index=True)
-            
-        except requests.exceptions.RequestException as e:
-            message_placeholder.error(f"Error: {str(e)}")
-        except Exception as e:
-            message_placeholder.error(f"Unexpected error: {str(e)}")
+render_chat_interface() # Call the main chat interface function

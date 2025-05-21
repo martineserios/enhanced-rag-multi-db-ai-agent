@@ -117,15 +117,89 @@ class TemplateAgent(BaseAgent):
         # Get agent-specific settings
         agent_settings = {
             "use_memory": self.settings.memory_enabled,  # Legacy setting
-            "processing_level": getattr(self.settings, "template_processing_level", "basic"),
-            "max_references": getattr(self.settings, "template_max_references", 3),
-            "reference_style": getattr(self.settings, "template_reference_style", "apa"),
+            "processing_level": getattr(self.settings, "processing_level", "basic"),
+            "max_references": getattr(self.settings, "max_references", 3),
+            "reference_style": getattr(self.settings, "reference_style", "inline"),
             "max_context_length": getattr(self.settings, "max_context_length", 2000),
             "temperature": getattr(self.settings, "temperature", 0.7)
         }
         
         # Merge settings
         return {**base_settings, **agent_settings}
+
+    async def get_graph_data(self) -> Dict[str, Any]:
+        """
+        Get graph visualization data for the template agent.
+        
+        Returns:
+            Dictionary containing nodes and edges for visualization
+        """
+        return {
+            "nodes": {
+                "process": {
+                    "name": "Process Input",
+                    "description": "Processes domain-specific information",
+                    "style": "fill:#e6f3ff,stroke:#333,stroke-width:2px"
+                },
+                "analyze": {
+                    "name": "Analyze",
+                    "description": "Analyzes processed information",
+                    "style": "fill:#e6ffe6,stroke:#333,stroke-width:2px"
+                },
+                "generate": {
+                    "name": "Generate Response",
+                    "description": "Generates response with references",
+                    "style": "fill:#ffe6e6,stroke:#333,stroke-width:2px"
+                },
+                "store_memory": {
+                    "name": "Store Memory",
+                    "description": "Stores conversation in memory",
+                    "style": "fill:#fff2e6,stroke:#333,stroke-width:2px"
+                },
+                "error_handler": {
+                    "name": "Error Handler",
+                    "description": "Handles errors in the workflow",
+                    "style": "fill:#ffe6cc,stroke:#333,stroke-width:2px"
+                },
+                "END": {
+                    "name": "End",
+                    "description": "End of conversation",
+                    "style": "fill:#f2f2f2,stroke:#333,stroke-width:2px"
+                }
+            },
+            "edges": [
+                {
+                    "from": "process",
+                    "to": "analyze",
+                    "label": "Processed"
+                },
+                {
+                    "from": "analyze",
+                    "to": "generate",
+                    "label": "Analyzed"
+                },
+                {
+                    "from": "generate",
+                    "to": "store_memory",
+                    "label": "Response Ready"
+                },
+                {
+                    "from": "generate",
+                    "to": "error_handler",
+                    "label": "Error"
+                },
+                {
+                    "from": "store_memory",
+                    "to": "END",
+                    "label": "Complete"
+                },
+                {
+                    "from": "error_handler",
+                    "to": "END",
+                    "label": "Error Handled"
+                }
+            ]
+        }
 
     async def process_chat_request(self, request: ChatRequest) -> ChatResponse:
         """

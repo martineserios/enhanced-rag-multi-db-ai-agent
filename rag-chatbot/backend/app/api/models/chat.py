@@ -136,3 +136,11 @@ class AgentSettingsResponse(BaseModel):
     agent_name: str
     settings: Dict[str, Any]
     settings_schema: Dict[str, Any]
+
+
+class AgentGraphResponse(BaseModel):
+    """Response model for agent graph visualization data."""
+    agent_id: str
+    agent_name: str
+    nodes: Dict[str, Dict[str, Any]]  # Node ID -> Node info (name, description, style)
+    edges: List[Dict[str, Any]]  # List of edges with from, to, and optional label

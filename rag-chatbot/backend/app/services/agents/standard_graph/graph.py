@@ -35,6 +35,7 @@ class ChatState(TypedDict):
     metadata: Dict[str, Any]
     metrics: Dict[str, Any]
     next_step: Optional[Literal["llm_response", "error", "end"]]
+    provider: str
 
 class ValidationNode:
     """Node responsible for validating the chat request."""
@@ -174,9 +175,10 @@ class LLMResponseNode:
         start_time = time.time()
         
         try:
-            provider = metrics.get("provider")
+            # Get provider directly from state
+            provider = state["provider"]
             if not provider:
-                raise ValueError("Provider not set in metrics")
+                raise ValueError("Provider not set in state")
             
             llm_service = get_llm_service(provider, self.settings)
             
@@ -217,7 +219,8 @@ class MemoryStorageNode:
             }
             
             metadata = {
-                "provider": metrics.get("provider"),
+                # Get provider directly from state
+                "provider": state.get("provider"),
                 "timestamp": datetime.utcnow().isoformat(),
                 "memory_types_used": [
                     memory_type for memory_type, used in state["memory_sources"].items() if used

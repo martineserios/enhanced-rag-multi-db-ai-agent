@@ -116,7 +116,7 @@ async def check_llm_providers(settings: Settings) -> Dict[str, bool]:
     
     return results
 
-def close_llm_services():
+async def close_llm_services():
     """
     Close all LLM service instances.
     
@@ -131,7 +131,8 @@ def close_llm_services():
         # Call close method if it exists
         if hasattr(service, "close") and callable(getattr(service, "close")):
             try:
-                service.close()
+                # Await the asynchronous close method
+                await service.close()
             except Exception as e:
                 logger.warning(f"Error closing {provider} LLM service: {str(e)}")
     
