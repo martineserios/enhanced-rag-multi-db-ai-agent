@@ -1,0 +1,41 @@
+# Use the official Jupyter Docker image with Python 3.10
+FROM jupyter/datascience-notebook:python-3.10
+
+# Set the working directory
+WORKDIR /home/jovyan/work
+
+# Install system dependencies
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv (ultra-fast Python package installer)
+RUN pip install --no-cache-dir uv
+
+# Switch back to jovyan to avoid permission issues
+USER ${NB_UID}
+
+# Copy requirements file
+COPY --chown=${NB_UID}:${NB_GID} requirements.txt /tmp/requirements.txt
+
+# Create a virtual environment and install dependencies
+RUN uv venv /home/jovyan/venv --python=$(which python3) && \
+    . /home/jovyan/venv/bin/activate && \
+    uv pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Configure Jupyter
+RUN mkdir -p /home/jovyan/.jupyter/ && \
+    echo "c.NotebookApp.token = 'glabitai'" >> /home/jovyan/.jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.password = ''" >> /home/jovyan/.jupyter/jupyter_notebook_config.py && \
+    echo "c.NotebookApp.notebook_dir = '/home/jovyan/work'" >> /home/jovyan/.jupyter/jupyter_notebook_config.py
+
+# Set environment variables
+ENV PATH="/home/jovyan/venv/bin:${PATH}"
+
+# Expose the port Jupyter will run on
+EXPOSE 8888
+
+# Start JupyterLab
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--no-browser", "--allow-root"]

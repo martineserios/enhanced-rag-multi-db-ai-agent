@@ -1,0 +1,87 @@
+# Core Dependencies
+python-dotenv>=1.1.0
+pymongo[srv]>=4.6.0
+pandas>=2.0.0
+numpy>=1.24.0,<2.0.0  # Required by langchain 0.0.352
+redis>=5.0.0,<6.0.0
+
+# AI/ML Dependencies
+groq>=0.15.0,<1.0.0
+openai==1.75.0
+langgraph==0.3.31
+chromadb>=0.4.0,<0.5.0
+sentence-transformers>=2.2.2,<3.0.0
+# Updated to latest compatible versions
+langchain>=0.3.0,<0.4.0
+langchain-community>=0.3.0,<0.4.0
+langchain-core>=0.3.0,<0.4.0
+langchain-openai>=0.3.0,<0.4.0
+langchain-groq>=0.2.0,<0.3.0  # Updated to newer version that supports newer langchain
+langchain-text-splitters>=0.3.0,<0.4.0
+pydantic==2.11.3
+pydantic-settings==2.8.1
+pydantic_core==2.33.1
+tiktoken==0.9.0
+
+# Jupyter Environment
+jupyterlab>=4.0.0
+ipykernel>=6.0.0
+ipywidgets>=8.0.0
+
+# Web & API
+fastapi==0.115.12
+uvicorn==0.34.1
+starlette==0.46.2
+httpx==0.28.1
+httpcore==1.0.8
+requests==2.32.3
+requests-toolbelt==1.0.0
+
+# Utilities
+aiohttp==3.11.16
+aiosignal==1.3.2
+annotated-types==0.7.0
+anyio==4.9.0
+attrs==25.3.0
+certifi==2025.1.31
+charset-normalizer==3.4.1
+click==8.1.8
+dataclasses-json==0.6.7
+distro==1.9.0
+faker>=15.0.0
+frozenlist==1.5.0
+h11==0.14.0
+httpx-sse==0.4.0
+idna==3.10
+jiter==0.9.0
+jsonpatch==1.33
+jsonpointer==3.0.0
+langgraph-checkpoint==2.0.24
+langgraph-prebuilt==0.1.8
+langgraph-sdk==0.1.61
+langsmith==0.3.31
+marshmallow==3.26.1
+multidict==6.4.3
+mypy-extensions==1.0.0
+orjson==3.10.16
+ormsgpack==1.9.1
+packaging==24.2
+propcache==0.3.1
+PyYAML==6.0.2
+regex==2024.11.6
+sniffio==1.3.1
+SQLAlchemy==2.0.40
+tenacity>=8.1.0,<9.0.0  # Required by langchain 0.0.352
+tqdm==4.67.1
+typing-inspect==0.9.0
+typing-inspection==0.4.0
+typing_extensions==4.13.2
+urllib3==2.4.0
+xxhash==3.5.0
+yarl==1.20.0
+zstandard==0.23.0
+
+# Development Tools
+black>=23.0.0
+ruff>=0.1.0
+pytest>=7.0.0

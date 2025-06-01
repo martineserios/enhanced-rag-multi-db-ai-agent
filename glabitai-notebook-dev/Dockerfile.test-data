@@ -1,0 +1,38 @@
+# Use Python 3.9 slim image
+FROM python:3.10-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# Install uv (ultra-fast Python package installer)
+RUN pip install --no-cache-dir uv
+
+# Create a virtual environment and install dependencies
+RUN uv venv /app/venv --python=$(which python3) && \
+    . /app/venv/bin/activate && \
+    uv pip install --no-cache-dir -r requirements.txt
+
+# Set environment variables
+ENV PATH="/app/venv/bin:${PATH}"
+
+# Copy the test data script
+COPY scripts/populate_test_data.py .
+
+# Create a wait script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n# Log environment for debugging\necho "=== Environment Variables ==="\nprintenv | sort\necho "============================"\n\n# Wait for MongoDB\nuntil nc -z mongodb 27017; do\n  echo "[$(date)] Waiting for MongoDB to be ready..."\n  sleep 2\ndone\n\n# Wait for Redis\nuntil nc -z redis 6379; do\n  echo "[$(date)] Waiting for Redis to be ready..."\n  sleep 2\ndone\n\necho "[$(date)] All services ready. Starting test data population..."\n\n# Set environment variables for the script\nexport MONGO_URI="${MONGODB_URI:-mongodb://mongodb:27017/}"\nexport MONGO_DB="${MONGODB_DB:-glabitai_glp1_clinical}"\nexport LOG_LEVEL="${LOG_LEVEL:-INFO}"\n\n# Run the script with debug logging\necho "[$(date)] Running: python -u populate_test_data.py"\npython -u populate_test_data.py\n\necho "[$(date)] Test data population completed"\n' > /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/app/entrypoint.sh"]
