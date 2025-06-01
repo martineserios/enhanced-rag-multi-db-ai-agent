@@ -1,6 +1,226 @@
-# Medical Research Agent
+# Clinical Agent (Spanish-Speaking)
 
-A sophisticated LangGraph-based medical research agent that provides evidence-based responses with citations and clinical context. This agent is designed to process medical queries, validate terminology, retrieve relevant literature, and generate well-cited medical responses.
+A sophisticated LangGraph-based clinical agent that provides direct diagnosis and treatment recommendations in Spanish. This agent is designed to process medical queries, analyze symptoms, and provide clinical guidance based on patient history and medical context.
+
+## Detailed Flow Diagram
+
+```mermaid
+graph TD
+    %% Main Entry Point
+    A[User Sends Message] --> B[ClinicalAgent.process_chat_request]
+    
+    %% State Initialization
+    B --> C[Initialize State]
+    C --> D[Create Graph: create_clinical_agent_graph]
+    
+    %% Graph Nodes
+    D --> E[clinical_analysis: ClinicalAnalysisNode]
+    D --> F[clinical_diagnosis: ClinicalDiagnosisNode]
+    D --> G[store_memory: ClinicalMemoryStorageNode]
+    D --> H[handle_error: ClinicalErrorHandlerNode]
+    
+    %% ClinicalAnalysisNode Flow
+    E --> E1[Initialize LLM Service if needed]
+    E1 --> E2[Detect Medical Terms]
+    E2 --> E3[Retrieve Patient History]
+    E3 --> E4[Update State with Findings]
+    E4 --> R[Router]
+    
+    %% ClinicalDiagnosisNode Flow
+    F --> F1[Initialize LLM Service if needed]
+    F1 --> F2[Build Context from Terms & History]
+    F2 --> F3[Generate System Prompt]
+    F3 --> F4[Call LLM Service]
+    F4 --> F5[Update State with Diagnosis]
+    F5 --> R
+    
+    %% ClinicalMemoryStorageNode Flow
+    G --> G1{Memory Enabled?}
+    G1 -->|Yes| G2[Store Conversation]
+    G1 -->|No| G3[Skip Storage]
+    G2 --> G4[Update Patient History]
+    G3 --> R
+    G4 --> R
+    
+    %% Error Handling Flow
+    H --> H1[Log Error]
+    H1 --> H2[Generate User-Friendly Message]
+    H2 --> H3[Update State with Error]
+    H3 --> R
+    
+    %% Router Logic
+    R --> R1{state.next_step?}
+    R1 -->|"analyze"| E
+    R1 -->|"diagnose"| F
+    R1 -->|"store_memory"| G
+    R1 -->|"error"| H
+    R1 -->|"end"| I[END]
+    
+    %% Response Generation
+    I --> J[Format Response]
+    J --> K[Return to User]
+    
+    %% Key Decision Points
+    D1{Error in any node?} -->|Yes| H
+    D1 -->|No| R1
+    
+    %% Subgraph for Context
+    subgraph "State Management"
+        C
+        R
+        R1
+    end
+    
+    subgraph "Core Processing"
+        E
+        F
+    end
+    
+    subgraph "Persistence"
+        G
+    end
+    
+    subgraph "Error Handling"
+        H
+        D1
+    end
+    
+    %% Styling
+    classDef process fill:#e1f5fe,stroke:#01579b
+    classDef decision fill:#e8f5e9,stroke:#2e7d32
+    classDef storage fill:#f3e5f5,stroke:#6a1b9a
+    classDef error fill:#ffebee,stroke:#c62828
+    classDef state fill:#fff3e0,stroke:#e65100
+    
+    class E,F process
+    class R1 decision
+    class G storage
+    class H,D1 error
+    class C,R state
+```
+
+## Detailed Flow Explanation
+
+### 1. Initialization Phase
+- **Entry Point**: `ClinicalAgent.process_chat_request()` receives the user's message
+- **State Initialization**: Creates initial state with:
+  - Conversation details
+  - Medical context
+  - Empty detected terms and patient history
+  - Metadata and metrics
+- **Graph Creation**: Initializes the agent graph with all necessary nodes
+
+### 2. Analysis Phase (ClinicalAnalysisNode)
+- **LLM Initialization**: Sets up LLM service if not already done
+- **Term Detection**: Uses regex patterns to identify medical terms in Spanish:
+  - Symptoms (síntomas)
+  - Conditions (condiciones)
+  - Severity (gravedad)
+  - Duration (duración)
+- **History Retrieval**: Fetches relevant patient history if memory is enabled
+- **State Update**: Updates state with findings and sets `next_step` to "diagnose"
+
+### 3. Diagnosis Phase (ClinicalDiagnosisNode)
+- **Context Building**: Creates context from detected terms and history
+- **Prompt Generation**: Builds system prompt based on settings:
+  - Includes symptoms and conditions
+  - Considers severity and duration
+  - Incorporates patient history
+- **LLM Interaction**: Calls the LLM service to generate diagnosis
+- **Response Formatting**: Structures the response with:
+  - Clear diagnosis
+  - Severity assessment
+  - Recommended actions
+  - Follow-up advice
+
+### 4. Memory Storage (ClinicalMemoryStorageNode)
+- **Memory Check**: Verifies if memory is enabled
+- **Storage**: If enabled:
+  - Stores conversation in memory
+  - Updates patient history
+- **State Update**: Sets `next_step` to "end"
+
+### 5. Routing Logic
+- **State-Based Routing**: Directs flow based on `state["next_step"]`
+- **Possible Transitions**:
+  - "analyze" → ClinicalAnalysisNode
+  - "diagnose" → ClinicalDiagnosisNode
+  - "store_memory" → ClinicalMemoryStorageNode
+  - "error" → ClinicalErrorHandlerNode
+  - "end" → Terminate
+
+### 6. Error Handling
+- **Error Detection**: Catches exceptions at each step
+- **Error Processing**:
+  - Logs detailed error information
+  - Generates user-friendly error messages in Spanish
+  - Ensures graceful degradation
+
+### 7. Response Generation
+- **Final Formatting**: Prepares the response with:
+  - Diagnosis and recommendations
+  - Any relevant context
+  - Metadata and metrics
+- **User Feedback**: Returns the formatted response to the user
+
+## Key Scenarios
+
+### Normal Flow
+1. User describes symptoms in Spanish
+2. System analyzes, diagnoses, and responds
+3. Conversation is stored in memory
+
+### Missing Information
+1. User provides incomplete information
+2. System may request additional details
+3. Flow continues once information is complete
+
+### Emergency Situation
+1. User describes severe symptoms
+2. System identifies emergency keywords
+3. Provides immediate action steps
+4. Recommends seeking emergency care
+
+### Follow-up Questions
+1. User asks follow-up questions
+2. System retrieves previous context
+3. Provides consistent responses
+
+### Error Conditions
+1. If LLM service is unavailable
+2. If memory storage fails
+3. If input is malformed
+4. Appropriate error messages are returned in Spanish
+
+---
+
+## Architecture Overview
+
+The agent is built using LangGraph and follows a modular, node-based architecture:
+
+```
+clinical_agent/
+├── graph.py          # Main graph implementation and node definitions
+├── prompts.py        # Prompt templates in Spanish
+├── service.py        # Agent service implementation
+└── README.md         # This documentation
+```
+
+### Core Components
+
+1. **Graph Nodes**
+   - `ClinicalAnalysisNode`: Analyzes symptoms and medical history
+   - `ClinicalDiagnosisNode`: Generates clinical diagnosis
+   - `ClinicalMemoryStorageNode`: Manages conversation storage
+   - `ClinicalErrorHandlerNode`: Handles errors gracefully
+
+2. **State Management**
+   - Uses `ClinicalChatState` TypedDict for type safety
+   - Tracks conversation context, detected terms, and patient history
+
+3. **Prompt Management**
+   - Centralized prompt templates in `ClinicalPromptTemplate`
+   - Structured prompts for analysis, diagnosis, and error handling
 
 ## Architecture Overview
 

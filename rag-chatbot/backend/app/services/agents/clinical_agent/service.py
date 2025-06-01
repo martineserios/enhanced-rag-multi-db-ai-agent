@@ -7,6 +7,7 @@ direct diagnosis and treatment recommendations.
 from typing import Dict, Any, Optional
 from datetime import datetime
 import uuid
+import time
 
 from app.core.logging import get_logger
 from app.config import Settings
@@ -132,7 +133,7 @@ class ClinicalAgent(BaseAgent):
         provider = self._validate_provider(request)
         
         try:
-            # Initialize state
+            # Initialize state with all required fields for tool handling
             state: ClinicalChatState = {
                 "request": request,
                 "conversation_id": conversation_id,
@@ -148,13 +149,37 @@ class ClinicalAgent(BaseAgent):
                     "settings": await self.get_available_settings()
                 },
                 "metrics": {
-                    "provider": request.provider.value if hasattr(request.provider, "value") else request.provider
+                    "provider": request.provider.value if hasattr(request.provider, "value") else request.provider,
+                    "start_time": time.time()
                 },
-                "next_step": None
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": request.message,
+                        "name": "user"
+                    }
+                ],
+                "next_step": "analyze",  # Start with the analyze step
+                "available_tools": [
+                    {
+                        "name": "lookup_medication",
+                        "description": "Look up medication information in Spanish",
+                        "args_schema": {
+                            "type": "object",
+                            "properties": {
+                                "medication_name": {"type": "string", "description": "The name of the medication to look up"},
+                                "language": {"type": "string", "description": "Language for the response (default: es for Spanish)"}
+                            },
+                            "required": ["medication_name"]
+                        }
+                    }
+                ],
+                "tool_calls": [],
+                "tool_results": []
             }
             
-            # Run the graph
-            final_state = await self.graph.ainvoke(state)
+            # Run the graph - call the wrapped function directly
+            final_state = await self.graph(state)
             
             # Create response
             response = ChatResponse(

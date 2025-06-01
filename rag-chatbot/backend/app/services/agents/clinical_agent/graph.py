@@ -4,22 +4,25 @@ Clinical Agent implementation (Spanish-speaking).
 This module implements a LangGraph workflow for a Spanish-speaking clinical agent that provides
 direct diagnosis and treatment recommendations based on symptoms and medical history.
 """
-from typing import Dict, List, Any, Optional, TypedDict, Annotated, Literal
-from datetime import datetime
-import uuid
+import json
 import logging
-import time
 import re
+import time
+import uuid
+from datetime import datetime
+from typing import (Annotated, Any, Callable, Dict, List, Literal, Optional,
+                    TypedDict)
 
-from langgraph.graph import Graph, StateGraph, END
-from langgraph.prebuilt import ToolNode
-
-from app.core.logging import get_logger
-from app.config import Settings
 from app.api.models.chat import ChatRequest, ChatResponse
+from app.config import Settings
+from app.core.logging import get_logger
+from app.services.agents.clinical_agent.tools import get_clinical_tools
+from app.services.database import query_mongo, query_postgres
 from app.services.llm.factory import get_llm_service
 from app.services.memory.manager import get_memory_manager
-from app.services.database import query_postgres, query_mongo
+from langchain_core.tools import BaseTool
+from langgraph.graph import END, Graph, StateGraph
+from langgraph.prebuilt import ToolNode
 
 logger = get_logger(__name__)
 
@@ -36,13 +39,17 @@ class ClinicalChatState(TypedDict):
     request: ChatRequest
     conversation_id: str
     medical_context: str
-    detected_terms: Dict[str, List[str]]  # Detected symptoms and conditions
-    patient_history: Dict[str, Any]  # Relevant patient history
+    detected_terms: Dict[str, List[str]]
+    patient_history: Dict[str, Any]
     response: Optional[str]
     error: Optional[str]
     metadata: Dict[str, Any]
     metrics: Dict[str, Any]
-    next_step: Optional[Literal["analyze", "diagnose", "treat", "store_memory", "error", "end"]]
+    messages: List[Dict[str, Any]]  # Added for tool node compatibility
+    next_step: Optional[Literal["analyze", "diagnose", "treat", "use_tool", "store_memory", "error", "end"]]
+    available_tools: List[Dict[str, Any]]
+    tool_calls: List[Dict[str, Any]]
+    tool_results: List[Dict[str, Any]]
 
 class ClinicalAnalysisNode:
     """Node responsible for analyzing symptoms and medical history in Spanish."""
@@ -87,12 +94,25 @@ class ClinicalAnalysisNode:
             metrics["analysis_time"] = time.time() - start_time
             metrics["terms_detected"] = sum(len(terms) for terms in detected_terms.values())
             
+            # Check if we need to use any tools
+            logger.info("[TOOL_DETECTION] Starting tool detection for message")
+            tool_calls = self._detect_tool_usage(request.message)
+            
+            if tool_calls:
+                logger.info(f"[TOOL_DETECTION] Detected {len(tool_calls)} tool calls needed for this message")
+                for i, tool_call in enumerate(tool_calls, 1):
+                    logger.info(f"[TOOL_CALL] {i}. {tool_call['name']} with args: {tool_call['args']}")
+                    logger.debug(f"[TOOL_CALL_DETAILS] Tool call {i} details: {json.dumps(tool_call, indent=2)}")
+            else:
+                logger.info("[TOOL_DETECTION] No tool calls needed for this message")
+            
             return {
                 **state,
                 "detected_terms": detected_terms,
                 "patient_history": patient_history,
                 "metrics": metrics,
-                "next_step": "diagnose"
+                "tool_calls": tool_calls if tool_calls else [],
+                "next_step": "use_tool" if tool_calls else "diagnose"
             }
             
         except Exception as e:
@@ -101,15 +121,56 @@ class ClinicalAnalysisNode:
     
     def _detect_medical_terms(self, message: str) -> Dict[str, List[str]]:
         """Detect medical terms in Spanish message."""
-        detected_terms = {}
-        message_lower = message.lower()
-        
+        detected = {}
         for category, pattern in MEDICAL_TERMS.items():
-            matches = list(re.finditer(pattern, message_lower))
+            matches = re.findall(pattern, message, re.IGNORECASE)
             if matches:
-                detected_terms[category] = [m.group() for m in matches]
+                detected[category] = list(set(matches))  # Remove duplicates
+        return detected
         
-        return detected_terms
+    def _detect_tool_usage(self, message: str) -> List[Dict[str, Any]]:
+        """
+        Detect if the message requires using any tools.
+        
+        Args:
+            message: User's message
+            
+        Returns:
+            List of tool calls to make, or empty list if no tools needed
+        """
+        logger.debug(f"Checking if tools are needed for message: {message}")
+        
+        # Simple keyword-based detection - in a real implementation, you might use an LLM
+        # to determine if tools are needed and with what parameters
+        
+        # Check for medication-related queries
+        medication_terms = [
+            "medicamento", "medicina", "pastilla", "comprimido", "cápsula",
+            "dosis", "efectos secundarios", "contraindicaciones", "para qué sirve"
+        ]
+        
+        if any(term in message.lower() for term in medication_terms):
+            logger.debug("Medication-related terms detected, checking for specific medications")
+            # Extract medication name (simplified example)
+            # In a real implementation, you'd use more sophisticated NLP
+            medication_match = re.search(r'\b(paracetamol|ibuprofeno|aspirina|omeprazol)\b', message, re.IGNORECASE)
+            if medication_match:
+                medication = medication_match.group(1).lower()
+                tool_call = {
+                    "name": "lookup_medication",
+                    "args": {
+                        "medication_name": medication,
+                        "language": "es"
+                    }
+                }
+                logger.info(f"Tool call detected: {tool_call}")
+                return [tool_call]
+            else:
+                logger.debug("No specific medication name detected in message")
+        else:
+            logger.debug("No medication-related terms detected in message")
+                
+        return []
 
 class ClinicalDiagnosisNode:
     """Node responsible for generating clinical diagnosis in Spanish."""
@@ -132,8 +193,11 @@ class ClinicalDiagnosisNode:
                 provider = metrics.get("provider")
                 self.llm_service = get_llm_service(provider, self.settings)
             
-            # Prepare context for diagnosis in Spanish
-            context = "Información del Paciente:\n"
+            # Prepare context for diagnosis
+            context = f"Usuario: {request.message}\n\n"
+            
+            # Add detected terms to context
+            detected_terms = state.get("detected_terms", {})
             if detected_terms.get("sintomas"):
                 context += f"Síntomas: {', '.join(detected_terms['sintomas'])}\n"
             if detected_terms.get("condiciones"):
@@ -144,6 +208,21 @@ class ClinicalDiagnosisNode:
                 context += f"Duración: {', '.join(detected_terms['duracion'])}\n"
             if patient_history:
                 context += f"\nHistorial del Paciente:\n{patient_history}\n"
+                
+            # Add tool results to context if available
+            if state.get("tool_results"):
+                tools_used = len(state["tool_results"])
+                logger.info(f"Incorporating results from {tools_used} tools into context")
+                context += "\nInformación de herramientas:\n"
+                for i, result in enumerate(state["tool_results"], 1):
+                    if isinstance(result, dict) and "content" in result:
+                        logger.debug(f"Tool {i} result (content): {result['content'][:200]}...")
+                        context += f"\nHerramienta {i}:\n{result['content']}\n"
+                    else:
+                        result_str = str(result)
+                        logger.debug(f"Tool {i} result (raw): {result_str[:200]}...")
+                        context += f"\nHerramienta {i}:\n{result_str}\n"
+                metrics["tools_used"] = tools_used
             
             # Generate diagnosis in Spanish
             system_prompt = (
@@ -259,34 +338,148 @@ class ClinicalErrorHandlerNode:
 def router(state: ClinicalChatState) -> str:
     """Route to the next node based on state."""
     if state.get("error"):
-        return "error_handler"
+        return "error"
     return state.get("next_step", "end")
 
-def create_clinical_agent_graph(settings: Settings) -> Graph:
-    """Create the Spanish-speaking clinical agent graph."""
-    workflow = StateGraph(ClinicalChatState)
+def tool_router(state: ClinicalChatState) -> str:
+    """Route to tools if needed, otherwise continue to next step."""
+    # If we have tool calls, route to tools node
+    if state.get("tool_calls"):
+        logger.info(f"[TOOL_ROUTER] Routing to tools node with {len(state['tool_calls'])} tool calls")
+        return "tools"
+    logger.debug("[TOOL_ROUTER] No tool calls, proceeding to next step")
+    return state.get("next_step", "end")
+
+def create_clinical_agent_graph(settings: Settings) -> callable:
+    """Create the Spanish-speaking clinical agent graph with tool support."""
+    builder = StateGraph(ClinicalChatState)
     
-    # Add nodes
-    workflow.add_node("analyze", ClinicalAnalysisNode(settings))
-    workflow.add_node("diagnose", ClinicalDiagnosisNode(settings))
-    workflow.add_node("store_memory", ClinicalMemoryStorageNode(settings))
-    workflow.add_node("error_handler", ClinicalErrorHandlerNode(settings))
+    # Initialize nodes
+    analysis_node = ClinicalAnalysisNode(settings)
+    diagnosis_node = ClinicalDiagnosisNode(settings)
+    memory_node = ClinicalMemoryStorageNode(settings)
+    error_node = ClinicalErrorHandlerNode(settings)
     
-    # Define edges
-    workflow.add_edge("analyze", "diagnose")
-    workflow.add_conditional_edges(
-        "diagnose",
-        router,
-        {
-            "store_memory": "store_memory",
-            "error_handler": "error_handler",
-            "end": END
-        }
-    )
-    workflow.add_edge("store_memory", END)
-    workflow.add_edge("error_handler", END)
+    # Get available tools
+    tools = get_clinical_tools()
+    logger.info(f"[TOOL_INIT] Initializing tool node with {len(tools)} tools")
+    tool_node = ToolNode([t for t in tools if isinstance(t, BaseTool)])
+    logger.info(f"[TOOL_INIT] Tool node created with tools: {[t.name for t in tools if hasattr(t, 'name')]}")
+    logger.debug(f"[TOOL_INIT] Full tool details: {[{'name': t.name, 'description': t.description} for t in tools if hasattr(t, 'name')]}")
+    logger.info("[TOOL_INIT] Tool node initialized successfully")
+    
+    # Add nodes to graph
+    builder.add_node("analyze", analysis_node)
+    builder.add_node("diagnose", diagnosis_node)
+    builder.add_node("store_memory", memory_node)
+    builder.add_node("handle_error", error_node)  # Changed from "error" to "handle_error"
+    builder.add_node("tools", tool_node)
     
     # Set entry point
-    workflow.set_entry_point("analyze")
+    builder.set_entry_point("analyze")
     
-    return workflow.compile() 
+    # Add edges with tool support
+    builder.add_conditional_edges(
+        "analyze",
+        router,
+        {
+            "diagnose": "diagnose",
+            "use_tool": "tools",
+            "store_memory": "store_memory",
+            "end": END,
+            "error": "handle_error"  # Updated to match the new node name
+        }
+    )
+    
+    # After tools complete, route based on next_step
+    builder.add_conditional_edges(
+        "tools",
+        tool_router,
+        {
+            "diagnose": "diagnose",
+            "store_memory": "store_memory",
+            "end": END,
+            "error": "handle_error"  # Updated to match the new node name
+        }
+    )
+    
+    # Standard flow
+    builder.add_conditional_edges(
+        "diagnose",
+        lambda state: state.get("next_step", "store_memory"),
+        {
+            "store_memory": "store_memory",
+            "end": END,
+            "error": "handle_error"  
+        }
+    )
+
+    # Memory and error handling
+    builder.add_edge("store_memory", END)
+    builder.add_edge("handle_error", "store_memory")  
+
+    # Initialize available tools in the state
+    def init_state(state: ClinicalChatState) -> ClinicalChatState:
+        # Create the messages list that the tool node expects
+        messages = []
+        
+        # Add user message if it doesn't exist
+        if "request" in state and state["request"].message:
+            messages.append({
+                "role": "user",
+                "content": state["request"].message,
+                "name": "user"
+            })
+        
+        # Add any existing messages from the state
+        if "messages" in state and isinstance(state["messages"], list):
+            messages.extend(state["messages"])
+        
+        # Prepare tool calls in the format expected by the tool node
+        tool_calls = []
+        if state.get("tool_calls"):
+            for i, tool_call in enumerate(state["tool_calls"]):
+                tool_calls.append({
+                    "type": "function",
+                    "id": f"call_{i}",
+                    "function": {
+                        "name": tool_call["name"],
+                        "arguments": json.dumps(tool_call.get("args", {})),
+                    }
+                })
+        
+        # Add tool call to the last message if we have tool calls
+        if tool_calls and messages:
+            messages[-1]["tool_calls"] = tool_calls
+        
+        return {
+            **state,
+            "messages": messages,
+            "available_tools": [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "args_schema": tool.args_schema.schema() if hasattr(tool, 'args_schema') else {}
+                }
+                for tool in tools if hasattr(tool, 'name')
+            ],
+            "tool_calls": tool_calls,
+            "tool_results": state.get("tool_results", [])
+        }
+    
+    compiled_graph = builder.compile()
+    
+    # Log graph compilation success
+    logger.info("Clinical agent graph compiled successfully")
+    
+    # Wrap the compiled graph to initialize state
+    async def wrapped_graph(state: ClinicalChatState):
+        logger.debug("Initializing graph state with tools")
+        initialized_state = init_state(state)
+        logger.debug("Invoking graph with initialized state")
+        result = await compiled_graph.ainvoke(initialized_state)
+        logger.debug("Graph execution completed")
+        return result
+    
+    logger.info("Returning wrapped graph function")
+    return wrapped_graph
