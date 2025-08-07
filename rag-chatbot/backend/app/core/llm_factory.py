@@ -97,12 +97,13 @@ def create_groq_provider() -> Optional[GroqProvider]:
     
     config = ModelConfig(
         provider=ProviderType.GROQ,
-        model_name="llama2-70b-4096",
+        model_name=settings.GROQ_MODEL,
         max_tokens=1500,
         temperature=0.3,
         capabilities=[
             ModelCapability.KNOWLEDGE_RETRIEVAL,
-            ModelCapability.MEDICAL_REASONING
+            ModelCapability.MEDICAL_REASONING,
+            ModelCapability.CLINICAL_CONVERSATION
         ],
         medical_validated=True,
         hipaa_compliant=False  # Note: Groq may not be HIPAA compliant

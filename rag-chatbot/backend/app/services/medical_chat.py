@@ -5,7 +5,6 @@ Core service for handling medical conversations about obesity treatment.
 Integrates with OpenAI for medical AI responses and manages conversation context.
 """
 
-import json
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
@@ -64,6 +63,10 @@ class MedicalChatService:
         self.settings = get_settings()
         self.knowledge_base = MedicalKnowledgeBase()
         self.contexts: Dict[str, ConversationContext] = {}
+        
+        # Reset provider manager to pick up latest routing configuration
+        from app.core.llm_factory import reset_provider_manager
+        reset_provider_manager()
         self.provider_manager = get_provider_manager()
         
         logger.info("Medical Chat Service initialized with flexible LLM providers")
@@ -128,11 +131,11 @@ class MedicalChatService:
                 }
             )
             
-            # Get response using appropriate provider for clinical conversation
+            # Get response using appropriate provider for clinical conversation (Groq first)
             llm_response = await self.provider_manager.generate_medical_response(
                 capability=ModelCapability.CLINICAL_CONVERSATION,
                 request=llm_request,
-                fallback_providers=[ProviderType.OPENAI, ProviderType.ANTHROPIC]
+                fallback_providers=[ProviderType.GROQ, ProviderType.OPENAI, ProviderType.ANTHROPIC]
             )
             
             # Add messages to context

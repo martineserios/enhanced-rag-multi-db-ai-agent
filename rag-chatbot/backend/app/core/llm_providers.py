@@ -367,10 +367,19 @@ class GroqProvider(LLMProvider):
                 max_tokens=max_tokens
             )
             
+            # Convert usage to dict format compatible with Groq response structure
+            usage_dict = None
+            if response.usage:
+                usage_dict = {
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "completion_tokens": getattr(response.usage, "completion_tokens", 0), 
+                    "total_tokens": getattr(response.usage, "total_tokens", 0)
+                }
+            
             return {
                 "content": response.choices[0].message.content,
                 "model": response.model,
-                "usage": response.usage._asdict() if response.usage else None
+                "usage": usage_dict
             }
         except Exception as e:
             logger.error(f"Groq API error: {str(e)}")
@@ -399,10 +408,10 @@ class LLMProviderManager:
     def _setup_default_routing(self):
         """Setup default capability routing."""
         self.capability_routing = {
-            ModelCapability.MEDICAL_REASONING: [ProviderType.OPENAI],
-            ModelCapability.CLINICAL_CONVERSATION: [ProviderType.ANTHROPIC, ProviderType.OPENAI],
+            ModelCapability.MEDICAL_REASONING: [ProviderType.GROQ, ProviderType.OPENAI],
+            ModelCapability.CLINICAL_CONVERSATION: [ProviderType.GROQ, ProviderType.ANTHROPIC, ProviderType.OPENAI],
             ModelCapability.KNOWLEDGE_RETRIEVAL: [ProviderType.GROQ, ProviderType.OPENAI],
-            ModelCapability.PATIENT_MONITORING: [ProviderType.OPENAI, ProviderType.ANTHROPIC]
+            ModelCapability.PATIENT_MONITORING: [ProviderType.GROQ, ProviderType.OPENAI, ProviderType.ANTHROPIC]
         }
     
     def register_provider(self, provider: LLMProvider):
