@@ -9,7 +9,7 @@ import os
 from typing import Optional
 from functools import lru_cache
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import field_validator, ConfigDict
 
 
 class Settings(BaseSettings):
@@ -85,10 +85,11 @@ class Settings(BaseSettings):
         """Get supported languages as a list."""
         return [lang.strip() for lang in self.SUPPORTED_LANGUAGES.split(",")]
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8", 
+        case_sensitive=True
+    )
 
 
 @lru_cache()

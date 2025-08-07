@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Development Approach
+
+**Test-Driven Development (TDD) is MANDATORY** for all code in this medical AI project. Given the critical nature of healthcare applications, every line of code must be thoroughly tested before implementation.
+
+### TDD Workflow (Non-Negotiable)
+1. **Red**: Write a failing test that defines desired behavior
+2. **Green**: Write the minimal code to make the test pass
+3. **Refactor**: Improve code quality while keeping tests green
+4. **Repeat**: Continue the cycle for each new feature or bug fix
+
+**Why TDD is Critical for Medical AI**:
+- **Patient Safety**: Every clinical decision must be validated through comprehensive test scenarios
+- **Regulatory Compliance**: Medical software requires documented test coverage for FDA/regulatory approval
+- **Code Quality**: TDD ensures robust, maintainable code in complex medical workflows
+- **Confidence**: Comprehensive test suites enable safe refactoring and feature additions
+
 ## Project Architecture
 
 GlabitAI is a specialized medical AI system focused on obesity treatment follow-up care with GLP-1 medications (Ozempic/Semaglutide). The system combines a multi-project repository architecture with clinical AI agents for comprehensive patient monitoring and healthcare team coordination.
@@ -47,26 +63,40 @@ Specialized for obesity treatment with:
 
 ### Primary Development (rag-chatbot)
 
+**Package Management**: UV is the preferred package manager for this project - fast, reliable, and handles virtual environments automatically.
+
 ```bash
 # Setup clinical development environment
-make setup                    # Creates venv with medical AI dependencies using uv
+uv venv                      # Create virtual environment
+uv sync                      # Install dependencies from pyproject.toml
+source .venv/bin/activate    # Activate environment (Linux/Mac)
 
-# Development servers for clinical testing
-make dev-backend             # Run FastAPI with medical agent extensions
-make dev-frontend            # Run Streamlit clinical dashboard
-make dev                     # Run both for integrated clinical testing
+# Development servers for clinical testing  
+uv run uvicorn app.main:app --reload  # Run FastAPI backend
+uv run streamlit run app/ui/dashboard.py  # Run Streamlit dashboard
+
+# Clinical testing and validation (TDD Workflow)
+uv run pytest               # Run all tests including clinical agent tests
+uv run pytest tests/backend/  # Backend medical logic tests only
+uv run pytest --cov=app --cov-report=html --cov-fail-under=90  # Test coverage validation (90% minimum)
+uv run pytest -x            # Stop at first failure (useful during TDD red-green cycle)
+uv run pytest --lf          # Run last failed tests (TDD iteration)
+uv run ruff check           # Medical code quality with ruff linting
+uv run ruff format          # Code formatting
+uv run mypy app/            # Type checking
+
+# Package management with UV
+uv add <package>            # Add new dependency
+uv add --dev <package>      # Add development dependency
+uv remove <package>         # Remove dependency
+uv lock                     # Update lock file
+uv tree                     # Show dependency tree
 
 # Docker services for medical data infrastructure
 make build                   # Build images with clinical database support
 make up                      # Start all medical databases and services
 make down                    # Stop clinical infrastructure
 make check-services          # Verify medical database connectivity
-
-# Clinical testing and validation
-make test                    # Run all tests including clinical agent tests
-make test-backend            # Backend medical logic tests
-make lint                    # Medical code quality with ruff
-make dev-test                # Clinical tests with medical coverage reporting
 
 # Medical database management
 make db-init                 # Initialize clinical databases with medical schemas
@@ -89,14 +119,14 @@ jupyter notebook                             # Start clinical agent development 
 ### Obesity Treatment Agent Development
 
 ```bash
-# Clinical agent testing
+# Clinical agent testing (using UV)
 cd rag-chatbot/backend
-pytest tests/test_clinical_agent.py         # Obesity agent specific tests
-pytest tests/integration/test_clinical_flow.py  # End-to-end clinical workflow tests
+uv run pytest tests/test_clinical_agent.py         # Obesity agent specific tests
+uv run pytest tests/integration/test_clinical_flow.py  # End-to-end clinical workflow tests
 
 # Medical knowledge base testing
-pytest tests/test_medical_knowledge.py      # GLP-1 protocol validation
-pytest tests/test_patient_monitoring.py     # Patient journey state management
+uv run pytest tests/test_medical_knowledge.py      # GLP-1 protocol validation
+uv run pytest tests/test_patient_monitoring.py     # Patient journey state management
 ```
 
 ## Clinical Configuration
@@ -155,12 +185,14 @@ PHI_ANONYMIZATION=           # Patient data anonymization for research
 
 ## Medical Code Quality Standards
 
-Clinical code requires enhanced standards:
-- **Medical Terminology Validation**: All clinical terms must pass medical accuracy checks
-- **HIPAA Compliance**: All patient data handling must meet healthcare privacy standards
-- **Bilingual Medical Support**: Spanish/English medical translations validated by healthcare professionals
-- **Clinical Decision Audit**: All AI medical decisions must be logged and traceable
-- **Medical Error Handling**: Graceful degradation with immediate healthcare team notification
+Clinical code requires enhanced standards with TDD at the core:
+- **Test-First Medical Logic**: Write test cases defining medical behavior before any clinical code implementation
+- **Medical Terminology Validation**: All clinical terms must pass medical accuracy checks through automated test suites
+- **HIPAA Compliance**: All patient data handling must meet healthcare privacy standards - validate through privacy-focused test cases
+- **Bilingual Medical Support**: Spanish/English medical translations validated by healthcare professionals and automated test scenarios
+- **Clinical Decision Audit**: All AI medical decisions must be logged and traceable - verify through comprehensive test coverage
+- **Medical Error Handling**: Graceful degradation with immediate healthcare team notification - test all failure scenarios
+- **TDD Medical Coverage**: Every clinical decision path must have corresponding test coverage before deployment
 
 ## Obesity Treatment Agent Architecture
 
@@ -193,11 +225,16 @@ Single AI coordinator routing to:
 
 ### Development Philosophy
 
+**Test-Driven Development (TDD) First**: Write tests before implementation - critical for medical safety and reliability
+- **Red-Green-Refactor Cycle**: Write failing test → Make it pass → Refactor for quality
+- **Medical Safety Through Testing**: Every clinical decision must be validated through comprehensive test scenarios
+- **Test Coverage Requirement**: Minimum 90% coverage for all medical logic and patient-facing features
+- **Mock Medical Scenarios**: Create realistic patient interaction test cases before building features
+
 **Iterative MVP Approach**: Start simple, test thoroughly, add complexity incrementally
-- **Test-Driven Development (TDD)**: All medical logic must have comprehensive test coverage
 - **Working MVP Focus**: Each iteration must deliver a functional, testable medical capability
 - **Incremental Complexity**: Build from basic single-agent to complex multi-agent system
-- **Continuous Clinical Validation**: Each MVP validated with medical professionals
+- **Continuous Clinical Validation**: Each MVP validated with medical professionals through automated testing
 
 **Event-Driven Architecture**: Medical AI system built on event-driven patterns
 - **Medical Event Sourcing**: All patient interactions and medical decisions stored as immutable events
@@ -208,14 +245,21 @@ Single AI coordinator routing to:
 
 ### Clinical Development Standards
 
-When developing clinical features:
+When developing clinical features, follow these mandatory practices:
 
-1. **Clinical Validation First**: All medical logic must be validated against established protocols
-2. **Patient Safety Priority**: Implement conservative thresholds with healthcare team escalation
-3. **Test Coverage Requirements**: Minimum 90% test coverage for medical decision logic
-4. **Multilingual Medical Accuracy**: Ensure Spanish/English medical translations are clinically accurate
-5. **HIPAA-First Development**: Build privacy compliance into every feature from start
-6. **Healthcare Team Feedback Loop**: Regular validation with medical professionals
+1. **Test-Driven Development (TDD) Mandatory**: Write tests BEFORE writing any medical logic - no exceptions for patient safety
+   - Write failing test cases that define expected medical behavior
+   - Implement minimal code to make tests pass
+   - Refactor while keeping tests green
+   - Add edge cases and error scenarios before feature completion
+
+2. **Clinical Validation First**: All medical logic must be validated against established protocols through automated tests
+3. **Patient Safety Priority**: Implement conservative thresholds with healthcare team escalation - all validated through test scenarios
+4. **Test Coverage Requirements**: Minimum 90% test coverage for medical decision logic - use `uv run pytest --cov` to verify
+5. **Multilingual Medical Accuracy**: Ensure Spanish/English medical translations are clinically accurate with dedicated test cases
+6. **HIPAA-First Development**: Build privacy compliance into every feature from start - test data anonymization and access controls
+7. **Healthcare Team Feedback Loop**: Regular validation with medical professionals through automated test scenarios
+8. **UV Package Management**: Use `uv` for all Python environment and dependency management - faster installs, better dependency resolution, and automatic virtual environment handling
 
 ## Development Branch Strategy
 
@@ -263,25 +307,29 @@ p3-task-t3-6-1-whatsapp-api-setup        # T3.6.1: WhatsApp Business API setup
 
 ### Current Development State
 
-**Current Branch**: `langgraph-shurni-imp` - Legacy branch name
+**Current Branch**: `p1-task-t1-1-2-llm-provider-abc` - Implementing flexible LLM provider ABC architecture
 **Main Branch**: `main` - Stable clinical agent foundation  
+**Dev Branch**: `dev` - Development integration branch
 
-**Next Planned Branch**: `p1-task-t1-1-5-llm-provider-abc` - Implementing flexible LLM provider architecture
+**Current Task**: T1.1.2 - LLM Provider ABC architecture + OpenAI/Anthropic/Groq implementations (MVP 1, Week 1, Day 2)
 
 ### Branching Workflow Rules
 
 #### **Before Starting Any New Work**:
 1. **Check Roadmap Alignment**: Identify the exact MVP/Milestone/Task from DEVELOPMENT_ROADMAP.md
 2. **Create Systematic Branch**: Use the naming convention above
-3. **Update CLAUDE.md**: Record the branch purpose and scope
-4. **Commit Frequently**: Small, focused commits with clear messages
+3. **Write Tests First**: Create failing test cases that define the expected behavior (TDD mandatory)
+4. **Update CLAUDE.md**: Record the branch purpose and scope
+5. **Commit Frequently**: Small, focused commits with clear messages
 
 #### **Branch Lifecycle**:
 1. **Creation**: `git checkout -b {systematic-branch-name}`
-2. **Development**: Focus on single MVP/Milestone/Task scope
-3. **Testing**: Complete test coverage before PR
-4. **Integration**: Merge back to main via PR
-5. **Cleanup**: Delete feature branch after successful merge
+2. **Test Creation**: Write failing tests first (Red phase of TDD)
+3. **Implementation**: Write minimal code to make tests pass (Green phase of TDD)
+4. **Refactoring**: Improve code quality while keeping tests green (Refactor phase of TDD)
+5. **Coverage Validation**: Ensure 90% test coverage with `uv run pytest --cov`
+6. **Integration**: Merge back to main via PR only after all tests pass
+7. **Cleanup**: Delete feature branch after successful merge
 
 #### **Branch Scope Guidelines**:
 - **MVP Branches**: Complete cross-layer functionality (1-2 weeks)

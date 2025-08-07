@@ -5,7 +5,6 @@ Core service for handling medical conversations about obesity treatment.
 Integrates with OpenAI for medical AI responses and manages conversation context.
 """
 
-from openai import OpenAI
 import json
 import logging
 from typing import Dict, List, Any, Optional
@@ -15,6 +14,12 @@ import uuid
 from app.core.config import get_settings
 from app.services.medical_knowledge import MedicalKnowledgeBase
 from app.core.logging import log_medical_decision
+from app.core.llm_factory import get_provider_manager
+from app.core.llm_providers import (
+    LLMRequest, 
+    ModelCapability, 
+    ProviderType
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +48,8 @@ class ConversationContext:
         if len(self.messages) > 10:
             self.messages = self.messages[-10:]
     
-    def get_openai_messages(self) -> List[Dict[str, str]]:
-        """Get messages in OpenAI format."""
+    def get_llm_messages(self) -> List[Dict[str, str]]:
+        """Get messages in LLM provider format."""
         return [{"role": msg["role"], "content": msg["content"]} for msg in self.messages]
     
     def is_expired(self, timeout_minutes: int = 30) -> bool:
@@ -59,13 +64,9 @@ class MedicalChatService:
         self.settings = get_settings()
         self.knowledge_base = MedicalKnowledgeBase()
         self.contexts: Dict[str, ConversationContext] = {}
+        self.provider_manager = get_provider_manager()
         
-        # Initialize OpenAI client
-        if self.settings.OPENAI_API_KEY:
-            self.openai_client = OpenAI(api_key=self.settings.OPENAI_API_KEY)
-        else:
-            self.openai_client = None
-            logger.warning("OpenAI API key not configured")
+        logger.info("Medical Chat Service initialized with flexible LLM providers")
     
     async def get_medical_response(
         self,
@@ -104,23 +105,41 @@ class MedicalChatService:
                 knowledge=relevant_knowledge
             )
             
-            # Prepare messages for OpenAI
-            messages = [{"role": "system", "content": system_prompt}]
+            # Prepare messages for LLM provider
+            messages = []
             
             # Add conversation history
-            messages.extend(context.get_openai_messages())
+            messages.extend(context.get_llm_messages())
             
             # Add current user message
             messages.append({"role": "user", "content": message})
             
-            # Get OpenAI response
-            response = await self._get_openai_response(messages)
+            # Create LLM request with medical context
+            llm_request = LLMRequest(
+                messages=messages,
+                system_prompt=system_prompt,
+                patient_id=patient_id,
+                session_id=context.session_id,
+                medical_context={
+                    "patient_safety_level": "standard",
+                    "medical_domain": "obesity_treatment",
+                    "language": language,
+                    "requires_disclaimer": True
+                }
+            )
+            
+            # Get response using appropriate provider for clinical conversation
+            llm_response = await self.provider_manager.generate_medical_response(
+                capability=ModelCapability.CLINICAL_CONVERSATION,
+                request=llm_request,
+                fallback_providers=[ProviderType.OPENAI, ProviderType.ANTHROPIC]
+            )
             
             # Add messages to context
             context.add_message("user", message)
-            context.add_message("assistant", response["content"])
+            context.add_message("assistant", llm_response.content)
             
-            # Log medical decision
+            # Log medical decision with provider information
             decision_id = str(uuid.uuid4())
             log_medical_decision(
                 decision_id=decision_id,
@@ -128,21 +147,27 @@ class MedicalChatService:
                 input_data={
                     "message": message,
                     "language": language,
-                    "session_id": context.session_id
+                    "session_id": context.session_id,
+                    "provider": llm_response.provider.value
                 },
                 output_data={
-                    "response": response["content"],
-                    "knowledge_used": len(relevant_knowledge)
+                    "response": llm_response.content,
+                    "knowledge_used": len(relevant_knowledge),
+                    "model": llm_response.model,
+                    "medical_validated": llm_response.medical_validated
                 },
-                confidence_score=0.85  # Default confidence for MVP
+                confidence_score=llm_response.confidence_score or 0.85
             )
             
             return {
-                "content": response["content"],
+                "content": llm_response.content,
                 "language": language,
                 "session_id": context.session_id,
                 "context_preserved": True,
-                "knowledge_sources": len(relevant_knowledge)
+                "knowledge_sources": len(relevant_knowledge),
+                "provider": llm_response.provider.value,
+                "model": llm_response.model,
+                "medical_validated": llm_response.medical_validated
             }
             
         except Exception as e:
@@ -235,30 +260,6 @@ Respond in English clearly, accurately and understandably. Include medical discl
         else:
             return base_prompt_en.format(knowledge_content=knowledge_content)
     
-    async def _get_openai_response(self, messages: List[Dict]) -> Dict[str, str]:
-        """Get response from OpenAI API."""
-        if not self.openai_client:
-            raise Exception("OpenAI API key not configured")
-        
-        try:
-            response = self.openai_client.chat.completions.create(
-                model=self.settings.OPENAI_MODEL,
-                messages=messages,
-                max_tokens=self.settings.OPENAI_MAX_TOKENS,
-                temperature=self.settings.OPENAI_TEMPERATURE,
-                presence_penalty=0.1,
-                frequency_penalty=0.1
-            )
-            
-            return {
-                "content": response.choices[0].message.content.strip(),
-                "model": response.model,
-                "usage": response.usage
-            }
-            
-        except Exception as e:
-            logger.error(f"OpenAI API error: {str(e)}")
-            raise Exception(f"AI service unavailable: {str(e)}")
     
     async def get_session_context(self, session_id: str) -> Dict[str, Any]:
         """Get conversation context for session."""
@@ -278,10 +279,14 @@ Respond in English clearly, accurately and understandably. Include medical discl
         }
     
     async def health_check(self) -> Dict[str, Any]:
-        """Check service health."""
+        """Check service health including all LLM providers."""
+        from app.core.llm_factory import health_check_providers
+        
+        provider_health = await health_check_providers()
+        
         return {
-            "openai_configured": bool(self.settings.OPENAI_API_KEY),
             "knowledge_base_loaded": self.knowledge_base.is_loaded(),
             "active_sessions": len(self.contexts),
-            "service_status": "operational"
+            "service_status": "operational",
+            "providers": provider_health
         }
