@@ -139,6 +139,11 @@ OPENAI_API_KEY=              # GPT-4 for complex medical reasoning
 ANTHROPIC_API_KEY=           # Claude for clinical conversation
 GROQ_API_KEY=                # Llama for medical knowledge retrieval
 
+## Preferred LLM Provider
+
+For this project, **Groq is the preferred default LLM provider** due to its speed and cost-effectiveness for medical knowledge retrieval and clinical conversation. While other providers are supported, Groq should be prioritized for general use cases unless specific model capabilities (e.g., advanced reasoning) necessitate another provider.
+
+
 # Memory System Configuration (Mem0 Self-Hosted)
 MEM0_HOST=                   # Self-hosted Mem0 instance URL
 MEM0_API_KEY=                # Authentication for Mem0 API

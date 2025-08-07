@@ -54,11 +54,12 @@
 - **Testing Infrastructure**: Test frameworks, medical validation, CI/CD
 
 **Milestones in This Layer**:
-- **M1.1**: Project Setup & Basic API Framework
-- **M1.1.5**: Flexible LLM Provider Architecture (ABC Pattern Implementation)
-- **M1.2**: Patient Data Models & Database Integration
-- **M1.3**: Medical Knowledge System & Conversation Logic
-- **M1.4**: Event-Driven Foundation & Alert System
+    - **M1.0**: Infrastructure Setup (Docker Compose)
+    - **M1.1**: Project Setup & Basic API Framework
+    - **M1.1.5**: Flexible LLM Provider Architecture (ABC Pattern Implementation)
+    - **M1.2**: Patient Data Models & Database Integration
+    - **M1.3**: Medical Knowledge System & Conversation Logic
+    - **M1.4**: Event-Driven Foundation & Alert System
 
 ---
 
@@ -148,6 +149,15 @@ MVP 5: Memory-Enhanced Multi-Agent System
 - **Phase 3**: Basic security, simple communication
 
 ### Milestones & Tasks:
+
+#### Milestone M1.0: Infrastructure Setup (Week 1)
+**From Phase 1 Layer**
+
+**Tasks**:
+- **T1.0.1**: Docker Compose setup for MongoDB (Day 1)
+- **T1.0.2**: Configure backend to connect to Dockerized MongoDB (Day 1)
+- **T1.0.3**: Add `uv` to Docker image for backend (Day 1)
+- **T1.0.4**: Update `Makefile` for Docker Compose commands (Day 1)
 
 #### Milestone M1.1: Core Foundation (Week 1)
 **From Phase 1 Layer**

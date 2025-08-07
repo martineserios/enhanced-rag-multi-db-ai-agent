@@ -18,7 +18,21 @@ GlabitAI/
 
 ## 🚀 Quick Start
 
-### Backend Development
+### Docker Setup
+For a quick start with all services (backend and MongoDB) using Docker Compose:
+```bash
+# Create a .env file in the root directory with your MongoDB credentials and API keys
+cp .env.example .env
+# Edit .env with your actual values
+
+make docker-build  # Build Docker images
+make docker-up     # Start all services
+make docker-down   # Stop all services
+make docker-logs   # View logs
+```
+
+### Backend Development (without Docker)
+If you prefer to run the backend directly (requires local MongoDB instance):
 ```bash
 cd backend
 make setup     # Initial setup
@@ -28,7 +42,7 @@ make help      # See all commands
 ```
 
 ### Documentation
-See [`docs/CLAUDE.md`](docs/CLAUDE.md) for complete development guidelines.
+See [`docs/gemini.md`](docs/gemini.md) for complete development guidelines.
 
 ## 🏥 Medical AI Features
 

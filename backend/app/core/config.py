@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+    # Database settings
+    MONGO_URI: Optional[str] = None
+
     @field_validator("OPENAI_API_KEY")
     @classmethod
     def validate_openai_api_key(cls, v):

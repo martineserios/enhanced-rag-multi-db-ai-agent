@@ -16,9 +16,20 @@ import logging
 from datetime import datetime
 from typing import Dict, Any
 
-from app.api.endpoints import chat
+from app.api.endpoints import chat, patient
 from app.core.config import get_settings
 from app.core.logging import setup_logging
+from app.db.mongodb import connect_to_mongo, close_mongo_connection
+
+from app.db.mongodb import connect_to_mongo, close_mongo_connection
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await connect_to_mongo()
+    yield
+    await close_mongo_connection()
 
 # Setup logging
 setup_logging()
@@ -34,6 +45,7 @@ app = FastAPI(
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # Add CORS middleware for local development
@@ -47,6 +59,15 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(patient.router, prefix="/api/v1")
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await connect_to_mongo()
+    yield
+    await close_mongo_connection()
 
 @app.get("/")
 async def root() -> Dict[str, Any]:
@@ -75,14 +96,26 @@ async def health_check() -> Dict[str, Any]:
             llm_status = "healthy" if provider_health.get("summary", {}).get("status") == "healthy" else "degraded"
         except Exception:
             llm_status = "unavailable"
+
+        # Check MongoDB connection status
+        mongo_status = "unavailable"
+        try:
+            from app.db.mongodb import mongodb
+            if mongodb.client and await mongodb.client.admin.command('ping'):
+                mongo_status = "healthy"
+            else:
+                mongo_status = "unhealthy"
+        except Exception:
+            mongo_status = "unhealthy"
         
         checks = {
-            "status": "healthy" if llm_status != "unavailable" else "degraded",
+            "status": "healthy" if llm_status != "unavailable" and mongo_status == "healthy" else "degraded",
             "timestamp": datetime.now().isoformat(),
             "version": "0.1.0",
             "services": {
                 "api": "online",
                 "llm_providers": llm_status,
+                "mongodb": mongo_status,
                 "openai": "configured" if settings.OPENAI_API_KEY else "not_configured",
                 "anthropic": "configured" if settings.ANTHROPIC_API_KEY else "not_configured",
                 "groq": "configured" if settings.GROQ_API_KEY else "not_configured"
@@ -97,11 +130,20 @@ async def health_check() -> Dict[str, Any]:
 
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
-    """Custom 404 handler."""
+    """Custom 404 handler for unmatched routes only."""
+    from fastapi import HTTPException
+    # If this is an HTTPException with detail, let it pass through
+    if isinstance(exc, HTTPException) and hasattr(exc, 'detail'):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+    
+    # Otherwise use custom response for unmatched routes
     return JSONResponse(
         status_code=404,
         content={
-            "error": "Endpoint not found",
+            "error": "Endpoint not found", 
             "message": "The requested endpoint does not exist",
             "available_endpoints": [
                 "/",

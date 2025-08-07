@@ -181,15 +181,24 @@ class TestPerformanceIntegration:
     
     def test_response_time_tracking(self):
         """Test that response times are tracked and reasonable."""
-        with patch('app.core.llm_factory.get_provider_manager') as mock_manager:
-            mock_provider_manager = mock_manager.return_value
-            mock_provider_manager.generate_medical_response.return_value = type('MockResponse', (), {
-                'content': 'Quick response',
-                'provider': type('MockProvider', (), {'value': 'openai'})(),
-                'model': 'gpt-4',
-                'medical_validated': True,
-                'response_time_ms': 100  # Simulate a non-zero response time
-            })()
+        import time
+        
+        with patch('app.services.medical_chat.MedicalChatService.get_medical_response') as mock_get_medical_response:
+            def simulate_processing(*args, **kwargs):
+                time.sleep(0.001)  # Simulate minimal processing time
+                return {
+                    'content': 'Quick response',
+                    'language': 'es',
+                    'session_id': 'mock_session_id',
+                    'context_preserved': True,
+                    'knowledge_sources': 0,
+                    'provider': 'openai',
+                    'model': 'gpt-4',
+                    'medical_validated': True,
+                    'response_time_ms': 100  # Simulate a non-zero response time
+                }
+            
+            mock_get_medical_response.side_effect = simulate_processing
             
             response = client.post("/api/v1/chat", json={
                 "message": "Quick test",

@@ -49,6 +49,43 @@ This document outlines assumptions made and hardcoded values used within the tes
     *   Specific knowledge base entries used for testing retrieval.
     *   Expected relevant knowledge based on query.
 
+### `tests/test_patient_api.py`
+
+*   **Assumption**: Patient API endpoints are accessible at `/api/v1/patients` with CRUD operations.
+*   **Hardcoded Values**:
+    *   Test patient data: `name: "Test Patient"`, `age: 30`, `gender: "male"`, `height_cm: 175.0`
+    *   Sample patient ID: `"test_id"` used for testing retrieval operations
+    *   Medical history condition: `"Hypertension"` with diagnosis date `"2020-01-01T00:00:00"`
+    *   Treatment phase: `"initiation"` for patient creation tests
+    *   Weight values: `initial_weight_kg: 80.0`, `current_weight_kg: 75.0` with update to `70.0`
+*   **Assumption**: `PatientService` can be mocked and dependency-injected via FastAPI's dependency system.
+
+### `tests/test_conversation_api.py`
+
+*   **Assumption**: Conversation API endpoints are accessible at `/api/v1/chat` and related session endpoints.
+*   **Hardcoded Values**:
+    *   Test messages in Spanish: `"¿Cómo me inyecto Ozempic?"`, `"¿Y cuándo debo inyectarme?"`
+    *   Test messages in English: `"How do I inject Ozempic?"`, `"What is Ozempic?"`
+    *   Expected medical responses: `"Para inyectar Ozempic, consulte con su médico..."`, `"Continuando nuestra conversación anterior..."`
+    *   Session IDs: `"test-session-123"`, `"existing-session-456"`, `"test-session-789"`
+    *   Language codes: `"es"` (Spanish), `"en"` (English), `"fr"` (unsupported)
+    *   Context timeout: `30` minutes for expiration testing
+    *   Message limit: `10` messages maximum in conversation context
+*   **Assumption**: `ConversationContext` class maintains message history with timestamps and role-based structure.
+*   **Assumption**: Medical chat service can be mocked and provides health check functionality.
+
+### `tests/test_chat_examples.py`
+
+*   **Assumption**: Integration tests can run against live API endpoints or handle service unavailability gracefully.
+*   **Hardcoded Values**:
+    *   Spanish test query: `"¿Cuáles son los efectos secundarios de la semaglutida?"`
+    *   English test query: `"How does GLP-1 medication work?"`
+    *   Message length limit: `1000` characters maximum
+    *   Expected error messages: `"Medical chat service unavailable"`, `"Unable to process medical query at this time"`
+    *   Language validation: Only `['es', 'en']` supported
+*   **Assumption**: Tests expect either `200 OK` for successful responses or `500` for service unavailability.
+*   **Assumption**: Response structure includes `message`, `language`, `session_id`, `medical_disclaimer`, and `response_time_ms`.
+
 ---
 
 **Note**: This document should be updated whenever new tests are added, existing tests are modified, or hardcoded values/assumptions change.

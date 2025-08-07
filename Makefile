@@ -50,6 +50,20 @@ clean: ## Clean backend cache files
 	cd $(BACKEND_DIR) && find . -type f -name "*.pyc" -delete
 	cd $(BACKEND_DIR) && rm -rf .pytest_cache .ruff_cache htmlcov .coverage
 
+## Infrastructure Commands
+
+docker-up: ## Start Docker Compose services
+	docker compose up -d
+
+docker-down: ## Stop Docker Compose services
+	docker compose down
+
+docker-build: ## Build Docker images
+	docker compose build
+
+docker-logs: ## View Docker Compose logs
+	docker compose logs -f
+
 setup: ## Initial backend project setup
 	cd $(BACKEND_DIR) && uv venv
 	make dev
