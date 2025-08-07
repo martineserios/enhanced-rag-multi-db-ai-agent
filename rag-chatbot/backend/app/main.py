@@ -67,14 +67,25 @@ async def root() -> Dict[str, Any]:
 async def health_check() -> Dict[str, Any]:
     """Health check endpoint for monitoring."""
     try:
-        # Basic health checks
+        # Basic health checks with new LLM provider system
+        from app.core.llm_factory import health_check_providers
+        
+        try:
+            provider_health = await health_check_providers()
+            llm_status = "healthy" if provider_health.get("summary", {}).get("status") == "healthy" else "degraded"
+        except Exception:
+            llm_status = "unavailable"
+        
         checks = {
-            "status": "healthy",
+            "status": "healthy" if llm_status != "unavailable" else "degraded",
             "timestamp": datetime.now().isoformat(),
             "version": "0.1.0",
             "services": {
                 "api": "online",
-                "openai": "configured" if settings.OPENAI_API_KEY else "not_configured"
+                "llm_providers": llm_status,
+                "openai": "configured" if settings.OPENAI_API_KEY else "not_configured",
+                "anthropic": "configured" if settings.ANTHROPIC_API_KEY else "not_configured",
+                "groq": "configured" if settings.GROQ_API_KEY else "not_configured"
             }
         }
         

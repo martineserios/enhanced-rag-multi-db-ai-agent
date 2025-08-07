@@ -9,8 +9,8 @@ MVP 1: Basic Medical Chatbot
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, field_validator
-from typing import Dict, List, Any, Optional
+from pydantic import BaseModel, field_validator, ConfigDict
+from typing import Dict, Any, Optional
 import logging
 from datetime import datetime
 import uuid
@@ -65,10 +65,11 @@ class ChatResponse(BaseModel):
     context_preserved: bool = True
     response_time_ms: int
     
-    class Config:
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             datetime: lambda v: v.isoformat()
         }
+    )
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -164,8 +165,16 @@ async def chat_service_health() -> Dict[str, Any]:
         # Check medical chat service health
         health_status = await medical_chat_service.health_check()
         
+        # Determine overall health status from providers
+        providers_status = health_status.get("providers", {})
+        if isinstance(providers_status, dict):
+            provider_health = providers_status.get("summary", {})
+            is_healthy = provider_health.get("status") == "healthy"
+        else:
+            is_healthy = False
+            
         return {
-            "status": "healthy" if health_status["openai_configured"] else "degraded",
+            "status": "healthy" if is_healthy else "degraded",
             "timestamp": datetime.now().isoformat(),
             "services": health_status,
             "version": "1.0.0"

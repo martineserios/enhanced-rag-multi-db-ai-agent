@@ -307,11 +307,11 @@ p3-task-t3-6-1-whatsapp-api-setup        # T3.6.1: WhatsApp Business API setup
 
 ### Current Development State
 
-**Current Branch**: `p1-task-t1-1-2-llm-provider-abc` - Implementing flexible LLM provider ABC architecture
+**Current Branch**: `p1-task-t1-1-3-conversation-api` - Implementing basic conversation API + context management
 **Main Branch**: `main` - Stable clinical agent foundation  
 **Dev Branch**: `dev` - Development integration branch
 
-**Current Task**: T1.1.2 - LLM Provider ABC architecture + OpenAI/Anthropic/Groq implementations (MVP 1, Week 1, Day 2)
+**Current Task**: T1.1.3 - Basic conversation API + context management (MVP 1, Week 1, Day 3)
 
 ### Branching Workflow Rules
 
