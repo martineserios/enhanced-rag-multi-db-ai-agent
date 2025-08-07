@@ -100,5 +100,12 @@ local_data/
 build/
 dist/
 
+# Build artifacts
+build/
+backend/.coverage
+backend/htmlcov/
+backend/logs/
+backend/*.log
+
 # Uploaded files
-glabitai_agent/data/uploads/
+backend/data/uploads/
