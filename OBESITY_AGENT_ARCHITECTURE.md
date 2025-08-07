@@ -195,34 +195,75 @@ Monitoring Agent → Risk Detection → Appropriate Specialist → Patient Conta
 ## Implementation Architecture
 
 ### Technical Stack
-- **LangGraph**: Multi-agent workflow orchestration
-- **LangChain**: Individual agent implementation with tool calling
+- **LangGraph**: Multi-agent workflow orchestration with state persistence
+- **Mem0 (Self-Hosted)**: Hybrid memory system for clinical context and patient episodes
 - **FastAPI**: REST API for agent communication and external integrations
-- **MongoDB**: Shared patient data and agent interaction logs
-- **Redis**: Real-time agent coordination and session management
+- **AWS Infrastructure**: EKS, DocumentDB, ElastiCache, MSK for medical-grade deployment
+- **Multi-Database Layer**: MongoDB, Redis, ChromaDB, Neo4j, PostgreSQL
 
-### Agent Deployment
-- **Microservices**: Each agent as independent service for scalability
-- **Container Orchestration**: Docker containers with Kubernetes orchestration
-- **Load Balancing**: Dynamic scaling based on patient load and agent utilization
-- **Fault Tolerance**: Agent backup systems and graceful degradation
+### Memory System Integration
+**Hybrid Mem0 + Custom Medical Memory Architecture**:
+```
+┌─────────────────────────────────────────────────────────┐
+│                 Agent Memory Layer                      │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │            Mem0 Memory System                   │   │
+│  │  • Patient episode memory (long-term)          │   │
+│  │  • Cross-agent context sharing                 │   │
+│  │  • Clinical conversation history               │   │
+│  │  • Agent-level memory isolation (HIPAA)       │   │
+│  └─────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+                            ↕
+┌─────────────────────────────────────────────────────────┐
+│              Custom Medical Components                  │
+│  • Patient journey state transitions                   │
+│  • Clinical alert memory patterns                      │
+│  • Treatment protocol version control                  │
+│  • Emergency escalation memory                         │
+└─────────────────────────────────────────────────────────┘
+                            ↕
+┌─────────────────────────────────────────────────────────┐
+│      7 Specialized Medical Agents                      │
+│  Orchestrator │ Medical │ Nutrition │ Psychology       │
+│  Fitness │ Education │ Monitoring & Analytics          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### AWS Cloud Deployment Strategy
+- **Primary Platform**: AWS with HIPAA BAA compliance
+- **Container Orchestration**: Amazon EKS with medical-grade availability (99.95% SLA)
+- **Multi-Region**: us-east-1 (primary), us-west-2 (disaster recovery)
+- **Auto-Scaling**: Horizontal pod autoscaling for 1000+ concurrent patients
+- **Security**: Customer-managed KMS keys, VPC isolation, mTLS between services
+
+### Agent Memory Coordination
+**Mem0 Integration Patterns**:
+- **Shared Clinical Context**: All agents access unified patient medical history
+- **Agent Handoffs**: Seamless memory transfer when switching between specialists
+- **Conflict Resolution**: Medical Supervision Agent has memory override authority
+- **Performance Optimization**: 26% better accuracy, 91% faster emergency response times
 
 ## Development Priority
 
-### Phase 1: Core Agents (Weeks 1-4)
-1. **Orchestrator Agent** - Central coordination
-2. **Medical Supervision Agent** - Clinical oversight
-3. **Patient Education Agent** - Basic education and injection training
+### Phase 1: Foundation & Core Agents (Weeks 1-4)
+1. **AWS Infrastructure Setup** - EKS cluster, DocumentDB, ElastiCache, security configuration
+2. **Mem0 Self-Hosted Deployment** - Memory system with HIPAA compliance and agent isolation
+3. **Orchestrator Agent** - Central coordination with Mem0 integration
+4. **Medical Supervision Agent** - Clinical oversight with emergency memory patterns
+5. **Patient Education Agent** - Basic education with treatment protocol versioning
 
-### Phase 2: Specialist Agents (Weeks 5-8)
-4. **Nutrition Specialist Agent** - Dietary guidance
-5. **Psychology Support Agent** - Mental health support
-6. **Monitoring & Analytics Agent** - Data analysis and alerts
+### Phase 2: Specialist Agents & Memory Integration (Weeks 5-8)
+6. **Nutrition Specialist Agent** - Dietary guidance with shared clinical context
+7. **Psychology Support Agent** - Mental health support with cross-agent memory access
+8. **Monitoring & Analytics Agent** - Data analysis with predictive memory patterns
+9. **Memory System Optimization** - Performance tuning for 26% accuracy improvement
 
-### Phase 3: Advanced Features (Weeks 9-12)
-7. **Fitness Coaching Agent** - Exercise guidance
-8. **Multi-agent coordination refinement**
-9. **Predictive analytics and risk modeling**
+### Phase 3: Advanced Features & Production Hardening (Weeks 9-12)
+10. **Fitness Coaching Agent** - Exercise guidance with patient episode memory
+11. **Multi-agent memory coordination refinement** - Seamless handoffs and conflict resolution
+12. **AWS Multi-Region Deployment** - Disaster recovery and global accessibility
+13. **Production Load Testing** - 1000+ concurrent patients with memory system validation
 
 ## Success Metrics by Agent
 

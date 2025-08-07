@@ -35,16 +35,21 @@ Create a virtual companion that supports obese patients during their treatment j
 
 ### Core Platform
 
-Built on existing GlabitAI infrastructure:
+Built on AWS medical-grade infrastructure with hybrid memory system:
 
-- **Backend**: FastAPI with multi-database memory architecture
-- **Memory Systems**:
-  - MongoDB (patient history, clinical events)
-  - Redis (session data, real-time monitoring)
+- **Cloud Platform**: Amazon Web Services (AWS) with HIPAA BAA compliance
+- **Backend**: FastAPI with multi-database memory architecture deployed on EKS
+- **Hybrid Memory System**:
+  - **Mem0 (Self-Hosted)**: Primary memory layer for patient episodes, clinical context, and cross-agent coordination
+  - **Custom Medical Components**: Patient journey state management, clinical alert memory, treatment protocol versioning
+- **Database Layer**:
+  - DocumentDB (patient history, clinical events)
+  - ElastiCache (session data, real-time monitoring)
   - ChromaDB (medical knowledge base)
   - Neo4j (treatment protocols, decision workflows)
-- **AI Framework**: LangGraph for complex medical decision workflows
-- **Agent System**: Extended clinical agent with obesity treatment specialization
+  - RDS PostgreSQL (structured medical data, audit logs)
+- **AI Framework**: LangGraph with Mem0 integration for complex medical decision workflows
+- **Agent System**: Multi-agent system with 7 specialized medical agents and memory coordination
 
 ### Communication Channels
 
@@ -212,19 +217,34 @@ Built on existing GlabitAI infrastructure:
 
 ## Technology Stack
 
+### AWS Cloud Infrastructure
+
+- **Amazon EKS**: Kubernetes container orchestration with medical-grade availability (99.95% SLA)
+- **Multi-Region Deployment**: us-east-1 (primary), us-west-2 (disaster recovery)
+- **Auto-Scaling**: Horizontal pod autoscaling for 1000+ concurrent patients
+- **Security**: Customer-managed KMS keys, VPC isolation, end-to-end encryption
+
 ### Backend Services
 
-- **FastAPI**: RESTful API and WebSocket communication
-- **LangGraph**: Complex medical decision workflows
-- **Multi-database architecture**: Specialized data storage and retrieval
-- **Agent system**: Clinical agent extension with obesity specialization
+- **FastAPI**: RESTful API and WebSocket communication deployed on EKS
+- **LangGraph + Mem0**: Complex medical decision workflows with hybrid memory integration
+- **Multi-database architecture**: AWS-managed specialized data storage and retrieval
+- **7-Agent System**: Multi-agent medical coordination with memory sharing
+
+### Memory & Data Services
+
+- **Mem0 (Self-Hosted)**: Primary memory layer with 26% better accuracy, HIPAA-compliant
+- **DocumentDB**: MongoDB-compatible patient clinical data with encryption
+- **ElastiCache**: Redis-compatible real-time monitoring with persistence
+- **RDS PostgreSQL**: Structured medical data with automated backups
+- **MSK (Kafka)**: Event streaming for medical alerts and agent coordination
 
 ### Integration Services
 
-- **WhatsApp Business API**: Primary patient communication
-- **Mobile app SDK**: Native application support
-- **Healthcare integrations**: Future EMR system compatibility
-- **Device integration**: Smart scales, fitness trackers, glucose monitors
+- **WhatsApp Business API**: Primary patient communication with E2E encryption
+- **Mobile app SDK**: Native application support with secure data sync
+- **AWS Bedrock**: AI/ML inference with medical model fine-tuning capabilities
+- **Device integration**: Smart scales, fitness trackers, glucose monitors via IoT Core
 
 ### AI/ML Components
 
