@@ -24,7 +24,7 @@ GlabitAI is a specialized medical AI system focused on obesity treatment follow-
 
 ### Core Components
 
-- **rag-chatbot/**: Main FastAPI backend with multi-database memory architecture and LangGraph agent workflows
+- **glabitai_agent/**: Main FastAPI backend with multi-database memory architecture and LangGraph agent workflows
 - **glabitai-notebook-dev/**: Jupyter development environment for clinical AI prototyping with PydanticAI
 - **Obesity Treatment Agent**: New clinical specialization for GLP-1 treatment follow-up (see OBESITY_TREATMENT_AI_AGENT.md)
 
@@ -61,7 +61,7 @@ Specialized for obesity treatment with:
 
 ## Development Commands
 
-### Primary Development (rag-chatbot)
+### Primary Development (glabitai_agent)
 
 **Package Management**: UV is the preferred package manager for this project - fast, reliable, and handles virtual environments automatically.
 
@@ -120,7 +120,7 @@ jupyter notebook                             # Start clinical agent development 
 
 ```bash
 # Clinical agent testing (using UV)
-cd rag-chatbot/backend
+cd glabitai_agent/backend
 uv run pytest tests/test_clinical_agent.py         # Obesity agent specific tests
 uv run pytest tests/integration/test_clinical_flow.py  # End-to-end clinical workflow tests
 

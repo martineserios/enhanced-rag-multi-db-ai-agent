@@ -320,6 +320,7 @@ class TestConfiguration:
         with patch('app.core.llm_factory.get_settings') as mock_settings:
             settings = Mock()
             settings.GROQ_API_KEY = "test-key"
+            settings.GROQ_MODEL = "llama-3.1-8b-instant"
             mock_settings.return_value = settings
             
             with patch('app.core.llm_factory.GroqProvider') as mock_provider:
@@ -329,7 +330,7 @@ class TestConfiguration:
                 args, kwargs = mock_provider.call_args
                 
                 config = kwargs['default_config']
-                assert config.model_name == "llama2-70b-4096"
+                assert config.model_name == "llama-3.1-8b-instant"
                 assert config.hipaa_compliant is False  # Groq may not be HIPAA compliant
                 assert ModelCapability.KNOWLEDGE_RETRIEVAL in config.capabilities
 

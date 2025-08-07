@@ -6,10 +6,8 @@ Convenient script to start the medical AI backend server
 with proper configuration and environment setup.
 """
 
-import os
 import sys
 import subprocess
-import logging
 from pathlib import Path
 
 
@@ -78,9 +76,9 @@ def main():
     uvicorn_args.extend(args)
     
     print("🚀 Starting GlabitAI Medical Backend...")
-    print(f"📡 Server will be available at: http://localhost:8000")
-    print(f"📖 API documentation: http://localhost:8000/docs")
-    print(f"❤️  Health check: http://localhost:8000/health")
+    print("📡 Server will be available at: http://localhost:8000")
+    print("📖 API documentation: http://localhost:8000/docs")
+    print("❤️  Health check: http://localhost:8000/health")
     print()
     print("💬 Test the medical chat API:")
     print('curl -X POST http://localhost:8000/api/v1/chat \\')

@@ -1,6 +1,6 @@
-# GlabitAI Backend - MVP 1: Basic Medical Chatbot
+# GlabitAI Agent - MVP 1: Basic Medical Chatbot
 
-Medical AI system for obesity treatment follow-up care with GLP-1 medications (Ozempic/Semaglutide).
+Medical AI agent system for obesity treatment follow-up care with GLP-1 medications (Ozempic/Semaglutide).
 
 ## MVP 1 Features
 
@@ -17,7 +17,7 @@ Medical AI system for obesity treatment follow-up care with GLP-1 medications (O
 
 ```bash
 # Clone and navigate to backend
-cd rag-chatbot/backend
+cd glabitai_agent/backend
 
 # Install dependencies with uv
 uv venv

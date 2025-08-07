@@ -7,7 +7,6 @@ with medical-specific validation and capability routing.
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from typing import List, Dict, Any
 
 from app.core.llm_providers import (
     LLMProvider,

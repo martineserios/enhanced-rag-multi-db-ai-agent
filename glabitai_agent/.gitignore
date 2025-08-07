@@ -101,4 +101,4 @@ build/
 dist/
 
 # Uploaded files
-rag-chatbot/data/uploads/
+glabitai_agent/data/uploads/

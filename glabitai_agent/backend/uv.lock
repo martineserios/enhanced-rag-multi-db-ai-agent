@@ -371,7 +371,7 @@ wheels = [
 ]
 
 [[package]]
-name = "glabitai-backend"
+name = "glabitai-agent"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -407,6 +407,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -441,6 +442,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.1.0" },
     { name = "pytest-cov", specifier = ">=6.2.1" },
     { name = "ruff", specifier = ">=0.12.7" },
+    { name = "uvicorn", specifier = ">=0.35.0" },
 ]
 
 [[package]]

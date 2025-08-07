@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "glabitai-backend"
+name = "glabitai-agent"
 dynamic = ["version"]
-description = "GlabitAI Medical AI Backend for Obesity Treatment"
+description = "GlabitAI Medical AI Agent for Obesity Treatment"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -46,10 +46,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/glabitai/backend"
+Homepage = "https://github.com/glabitai/glabitai_agent"
 Documentation = "https://docs.glabitai.com"
-Repository = "https://github.com/glabitai/backend.git"
-"Bug Tracker" = "https://github.com/glabitai/backend/issues"
+Repository = "https://github.com/glabitai/glabitai_agent.git"
+"Bug Tracker" = "https://github.com/glabitai/glabitai_agent/issues"
 
 [tool.hatch.version]
 path = "app/__init__.py"
@@ -132,4 +132,5 @@ dev = [
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.2.1",
     "ruff>=0.12.7",
+    "uvicorn>=0.35.0",
 ]

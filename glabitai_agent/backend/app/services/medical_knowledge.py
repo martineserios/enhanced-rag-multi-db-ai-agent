@@ -5,10 +5,8 @@ Static knowledge base containing GLP-1 treatment information,
 side effects, injection techniques, and medical protocols.
 """
 
-import json
 import logging
 from typing import Dict, List, Any
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
