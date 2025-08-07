@@ -316,11 +316,13 @@ p3-task-t3-6-1-whatsapp-api-setup        # T3.6.1: WhatsApp Business API setup
 ### Branching Workflow Rules
 
 #### **Before Starting Any New Work**:
-1. **Check Roadmap Alignment**: Identify the exact MVP/Milestone/Task from DEVELOPMENT_ROADMAP.md
-2. **Create Systematic Branch**: Use the naming convention above
-3. **Write Tests First**: Create failing test cases that define the expected behavior (TDD mandatory)
-4. **Update GEMINI.md**: Record the branch purpose and scope
-5. **Commit Frequently**: Small, focused commits with clear messages
+1. **For a new MVP**: Create an `mvp-{number}-{short-description}` branch from `dev` (short-description should be 2-3 words, e.g., `mvp-01-chatbot-basic`).
+2. **For Milestones/Tasks within an MVP**: Branch directly from the respective `mvp-{number}-{short-description}` branch.
+3. **Check Roadmap Alignment**: Identify the exact MVP/Milestone/Task from DEVELOPMENT_ROADMAP.md
+4. **Create Systematic Branch**: Use the naming convention above
+5. **Write Tests First**: Create failing test cases that define the expected behavior (TDD mandatory)
+6. **Update GEMINI.md**: Record the branch purpose and scope
+7. **Commit Frequently**: Small, focused commits with clear messages
 
 #### **Branch Lifecycle**:
 1. **Creation**: `git checkout -b {systematic-branch-name}`
