@@ -331,6 +331,17 @@ p3-task-t3-6-1-whatsapp-api-setup        # T3.6.1: WhatsApp Business API setup
 6. **Integration**: Merge back to main via PR only after all tests pass
 7. **Cleanup**: Delete feature branch after successful merge
 
+#### **Commit Message Standards**:
+- **Keep commit messages short and concise** (50 characters or less for title)
+- **Use present tense imperative mood**: "Add feature" not "Added feature"
+- **No signatures or attribution**: Do not include "Generated with Claude Code" or co-author signatures
+- **Focus on what, not why**: Brief description of the change
+- **Examples**:
+  - ✅ `Add Groq provider support`
+  - ✅ `Fix API validation error`
+  - ✅ `Update medical knowledge base`
+  - ❌ `Enhance T1.1.3: Configure Groq as default LLM provider + testing improvements...`
+
 #### **Branch Scope Guidelines**:
 - **MVP Branches**: Complete cross-layer functionality (1-2 weeks)
 - **Milestone Branches**: Single architectural layer implementation (3-5 days)  
