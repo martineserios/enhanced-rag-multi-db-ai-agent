@@ -1,240 +1,125 @@
-# filepath: backend/app/main.py
 """
-Main FastAPI application.
+FastAPI Main Application - GlabitAI Medical Chatbot
 
-This module defines the main FastAPI application, including routes,
-middleware, event handlers, and configuration.
+MVP 1: Basic Medical Chatbot for Obesity Treatment
+- Medical conversation endpoint
+- Bilingual support (Spanish/English)
+- OpenAI integration with medical prompting
+- Conversation context management
 """
-import os
-import asyncio
-from contextlib import asynccontextmanager
-from typing import Dict, List, Any, Optional
 
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.openapi.utils import get_openapi
+import uvicorn
+import logging
+from datetime import datetime
+from typing import Dict, Any
 
-from app.core.logging import setup_logging, get_logger
-from app.core.exceptions import BaseAppException
-from app.config import Settings, get_settings
-from app.api.middleware import RequestLoggingMiddleware, PerformanceMonitoringMiddleware
-from app.api.routes import chat, memory, documents
-from app.services.database.postgres import init_postgres
-from app.services.database.mongo import init_mongo
-from app.services.memory.manager import init_memory_manager
-from app.services.llm.factory import check_llm_providers, close_llm_services
+from app.api.endpoints import chat
+from app.core.config import get_settings
+from app.core.logging import setup_logging
 
+# Setup logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
-logger = get_logger(__name__)
+# Get application settings
+settings = get_settings()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Startup and shutdown events for the FastAPI application.
-    
-    This context manager:
-    1. Initializes services on startup
-    2. Cleans up resources on shutdown
-    
-    Args:
-        app: FastAPI application instance
-    """
+# Create FastAPI application
+app = FastAPI(
+    title="GlabitAI Medical Backend",
+    description="Medical AI system for obesity treatment follow-up care",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# Add CORS middleware for local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:8501"],  # Frontend origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include API routers
+app.include_router(chat.router, prefix="/api/v1")
+
+@app.get("/")
+async def root() -> Dict[str, Any]:
+    """Root endpoint with basic API information."""
+    return {
+        "message": "GlabitAI Medical Backend",
+        "version": "0.1.0",
+        "status": "active",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": {
+            "chat": "/api/v1/chat",
+            "health": "/health",
+            "docs": "/docs"
+        }
+    }
+
+@app.get("/health")
+async def health_check() -> Dict[str, Any]:
+    """Health check endpoint for monitoring."""
     try:
-        # Get settings
-        settings = get_settings()
+        # Basic health checks
+        checks = {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "0.1.0",
+            "services": {
+                "api": "online",
+                "openai": "configured" if settings.OPENAI_API_KEY else "not_configured"
+            }
+        }
         
-        # Configure logging
-        setup_logging(level=settings.get_log_level(), json_format=settings.log_json)
-        
-        logger.info(
-            f"Starting {settings.app_name} v{settings.app_version}",
-            extra={"debug_mode": settings.debug}
-        )
-        
-        # Initialize databases
-        await init_postgres(settings)
-        await init_mongo(settings)
-        
-        # Initialize memory manager if enabled
-        if settings.memory_enabled:
-            await init_memory_manager(settings)
-            logger.info("Memory manager initialized with enabled memory types", 
-                       extra={"memory_types": settings.get_enabled_memory_types()})
-        
-        # Check LLM providers
-        llm_status = await check_llm_providers(settings)
-        logger.info("LLM providers status", extra={"llm_status": llm_status})
-        
-        # Application startup complete
-        logger.info(f"{settings.app_name} startup complete")
-        
-        # Yield control back to FastAPI
-        yield
-        
-        # Shutdown logic
-        logger.info(f"Shutting down {settings.app_name}")
-        
-        # Close LLM services
-        close_llm_services()
-        
-        # Close memory manager if enabled
-        if settings.memory_enabled:
-            from app.services.memory.manager import get_memory_manager
-            try:
-                memory_manager = get_memory_manager()
-                await memory_manager.close()
-            except Exception as e:
-                logger.error(f"Error closing memory manager: {str(e)}")
-        
-        logger.info(f"{settings.app_name} shutdown complete")
+        return checks
         
     except Exception as e:
-        logger.exception(f"Error during application lifecycle: {str(e)}")
-        # Re-raise to let FastAPI handle the error
-        raise
+        logger.error(f"Health check failed: {str(e)}")
+        raise HTTPException(status_code=503, detail="Service unhealthy")
 
-
-def create_application() -> FastAPI:
-    """
-    Create and configure the FastAPI application.
-    
-    Returns:
-        Configured FastAPI application instance
-    """
-    # Get settings
-    settings = get_settings()
-    
-    # Create FastAPI app
-    app = FastAPI(
-        title=settings.app_name,
-        description="Memory-Enhanced RAG Chatbot API",
-        version=settings.app_version,
-        debug=settings.debug,
-        lifespan=lifespan,
-        docs_url=None,  # We'll use a custom docs endpoint
-        redoc_url=None  # Disable ReDoc
-    )
-    
-    # Add CORS middleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    
-    # Add custom middleware
-    app.add_middleware(RequestLoggingMiddleware)
-    app.add_middleware(PerformanceMonitoringMiddleware)
-    
-    # Add exception handlers
-    @app.exception_handler(BaseAppException)
-    async def handle_app_exception(request: Request, exc: BaseAppException):
-        """Handle custom application exceptions."""
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=exc.to_dict()
-        )
-    
-    # Include routers
-    app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-    app.include_router(memory.router, prefix="/api/memory", tags=["memory"])
-    app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
-    
-    # Add custom docs endpoint
-    @app.get("/docs", include_in_schema=False)
-    async def custom_swagger_ui_html():
-        """Serve custom Swagger UI."""
-        return get_swagger_ui_html(
-            openapi_url="/openapi.json",
-            title=f"{settings.app_name} - API Documentation",
-            swagger_favicon_url="",
-        )
-    
-    # Customize OpenAPI schema
-    def custom_openapi():
-        """Generate custom OpenAPI schema."""
-        if app.openapi_schema:
-            return app.openapi_schema
-        
-        openapi_schema = get_openapi(
-            title=settings.app_name,
-            version=settings.app_version,
-            description="Memory-Enhanced RAG Chatbot API built with FastAPI",
-            routes=app.routes,
-        )
-        
-        # Customize schema here if needed
-        
-        app.openapi_schema = openapi_schema
-        return app.openapi_schema
-    
-    app.openapi = custom_openapi
-    
-    # Add health check endpoint
-    @app.get("/health", tags=["health"])
-    async def health_check(settings: Settings = Depends(get_settings)):
-        """
-        Check if the API is running properly.
-        
-        Returns:
-            Health status and configuration information
-        """
-        health_info = {
-            "status": "healthy",
-            "version": settings.app_version,
-            "debug": settings.debug
+@app.exception_handler(404)
+async def not_found_handler(request, exc):
+    """Custom 404 handler."""
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Endpoint not found",
+            "message": "The requested endpoint does not exist",
+            "available_endpoints": [
+                "/",
+                "/health", 
+                "/api/v1/chat",
+                "/docs"
+            ]
         }
-        
-        # Check LLM providers if needed
-        llm_status = await check_llm_providers(settings)
-        health_info["llm_providers"] = llm_status
-        health_info["default_llm_provider"] = settings.default_llm_provider.value
-        
-        # Check memory status
-        health_info["memory_enabled"] = settings.memory_enabled
-        if settings.memory_enabled:
-            health_info["memory_types"] = settings.get_enabled_memory_types()
-        
-        return health_info
-    
-    # Add providers endpoint
-    @app.get("/api/providers", tags=["providers"])
-    async def get_providers(settings: Settings = Depends(get_settings)):
-        """
-        Get available LLM providers and the default provider.
-        Returns:
-            Dictionary with provider availability and default provider
-        """
-        llm_status = await check_llm_providers(settings)
-        return {
-            "providers": llm_status,
-            "default": settings.default_llm_provider.value
+    )
+
+@app.exception_handler(500)
+async def internal_error_handler(request, exc):
+    """Custom 500 handler."""
+    logger.error(f"Internal server error: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "message": "An unexpected error occurred",
+            "timestamp": datetime.now().isoformat()
         }
-    
-    # Return the configured app
-    return app
-
-
-# Create the application instance
-app = create_application()
+    )
 
 if __name__ == "__main__":
-    """
-    Run the application directly for development.
-    
-    In production, use a proper ASGI server like uvicorn or hypercorn.
-    """
-    import uvicorn
-    
-    settings = get_settings()
+    # Run the application
     uvicorn.run(
         "app.main:app",
-        host=settings.api_host,
-        port=settings.api_port,
-        reload=settings.debug,
-        log_level=settings.log_level.lower()
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        log_level="info"
     )

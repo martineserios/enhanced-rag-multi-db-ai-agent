@@ -1,192 +1,192 @@
-# filepath: backend/core/logging.py
 """
-Logging configuration for the application.
+Logging configuration for GlabitAI Backend
 
-This module provides a centralized way to configure logging throughout the application,
-ensuring consistent log formats, levels, and handling across all components.
+Medical-grade logging with audit trail capabilities
+for healthcare compliance.
 """
+
 import logging
+import logging.config
 import sys
-import json
 from datetime import datetime
-from typing import Dict, Any, Optional
-import uuid
-from contextvars import ContextVar
-from functools import wraps
+from typing import Dict, Any
 
-# Store the request ID in a context variable so it's available throughout a request
-request_id_context: ContextVar[str] = ContextVar('request_id', default='')
-
-class RequestContextFilter(logging.Filter):
-    """
-    Filter that adds request-specific context to log records.
-    
-    This adds request ID, timestamp, and other context information to log records,
-    making it easier to trace logs for a specific request.
-    """
-    
-    def filter(self, record):
-        """Add request context to log record."""
-        # Add request ID from context if available
-        record.request_id = request_id_context.get() or '-'
-        
-        # Add ISO-format timestamp for better parsing
-        record.isotime = datetime.utcnow().isoformat()
-        
-        return True
+from app.core.config import get_settings
 
 
-class JSONFormatter(logging.Formatter):
+def setup_logging() -> None:
     """
-    Format log records as JSON for easier parsing and analysis.
+    Setup logging configuration for medical application.
     
-    JSON-formatted logs are easier to parse by log aggregation systems and
-    make structured logging more effective.
+    Includes:
+    - Console logging for development
+    - File logging for audit trails
+    - Medical interaction logging
+    - Error tracking for patient safety
     """
+    settings = get_settings()
     
-    def format(self, record):
-        """Format log record as JSON."""
-        log_record = {
-            'timestamp': getattr(record, 'isotime', datetime.utcnow().isoformat()),
-            'level': record.levelname,
-            'logger': record.name,
-            'message': record.getMessage(),
-            'request_id': getattr(record, 'request_id', '-'),
-            'module': record.module,
-            'function': record.funcName,
-            'line': record.lineno
-        }
-        
-        # Include exception info if available
-        if record.exc_info:
-            log_record['exception'] = {
-                'type': record.exc_info[0].__name__,
-                'message': str(record.exc_info[1]),
-                'traceback': self.formatException(record.exc_info)
+    logging_config: Dict[str, Any] = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {
+                "format": settings.LOG_FORMAT,
+                "datefmt": "%Y-%m-%d %H:%M:%S"
+            },
+            "detailed": {
+                "format": (
+                    "%(asctime)s - %(name)s - %(levelname)s - "
+                    "%(module)s:%(funcName)s:%(lineno)d - %(message)s"
+                ),
+                "datefmt": "%Y-%m-%d %H:%M:%S"
+            },
+            "medical_audit": {
+                "format": (
+                    "MEDICAL_AUDIT - %(asctime)s - %(levelname)s - "
+                    "%(message)s"
+                ),
+                "datefmt": "%Y-%m-%d %H:%M:%S"
             }
-        
-        # Include any extra attributes
-        for key, value in record.__dict__.items():
-            if key not in {
-                'args', 'asctime', 'created', 'exc_info', 'exc_text', 'filename',
-                'funcName', 'id', 'levelname', 'levelno', 'lineno', 'module', 
-                'msecs', 'message', 'msg', 'name', 'pathname', 'process',
-                'processName', 'relativeCreated', 'stack_info', 'thread', 'threadName',
-                'isotime', 'request_id'
-            } and not key.startswith('_'):
-                log_record[key] = value
-        
-        return json.dumps(log_record)
+        },
+        "handlers": {
+            "console": {
+                "level": settings.LOG_LEVEL,
+                "class": "logging.StreamHandler",
+                "formatter": "standard",
+                "stream": sys.stdout
+            },
+            "file": {
+                "level": "INFO",
+                "class": "logging.FileHandler",
+                "formatter": "detailed",
+                "filename": "logs/app.log",
+                "mode": "a",
+                "encoding": "utf-8"
+            },
+            "medical_audit": {
+                "level": "INFO", 
+                "class": "logging.FileHandler",
+                "formatter": "medical_audit",
+                "filename": "logs/medical_audit.log",
+                "mode": "a",
+                "encoding": "utf-8"
+            },
+            "error_file": {
+                "level": "ERROR",
+                "class": "logging.FileHandler", 
+                "formatter": "detailed",
+                "filename": "logs/errors.log",
+                "mode": "a",
+                "encoding": "utf-8"
+            }
+        },
+        "loggers": {
+            "": {  # Root logger
+                "handlers": ["console", "file", "error_file"],
+                "level": settings.LOG_LEVEL,
+                "propagate": False
+            },
+            "app.services.medical": {
+                "handlers": ["console", "medical_audit", "error_file"],
+                "level": "INFO",
+                "propagate": False
+            },
+            "app.api": {
+                "handlers": ["console", "file"],
+                "level": "INFO", 
+                "propagate": False
+            },
+            "uvicorn": {
+                "handlers": ["console"],
+                "level": "INFO",
+                "propagate": False
+            },
+            "fastapi": {
+                "handlers": ["console", "file"],
+                "level": "INFO",
+                "propagate": False
+            }
+        }
+    }
+    
+    # Create logs directory if it doesn't exist
+    import os
+    os.makedirs("logs", exist_ok=True)
+    
+    # Apply logging configuration
+    logging.config.dictConfig(logging_config)
+    
+    # Log startup message
+    logger = logging.getLogger(__name__)
+    logger.info(f"Logging configured for {settings.APP_NAME} v{settings.APP_VERSION}")
+    logger.info(f"Log level set to: {settings.LOG_LEVEL}")
 
 
-def setup_logging(level: int = logging.INFO, json_format: bool = True) -> None:
+def get_medical_logger() -> logging.Logger:
     """
-    Set up application-wide logging configuration.
+    Get logger specifically for medical interactions.
+    
+    Used for audit trails and medical decision logging
+    required for healthcare compliance.
+    """
+    return logging.getLogger("app.services.medical")
+
+
+def log_medical_interaction(
+    patient_id: str,
+    interaction_type: str,
+    details: Dict[str, Any],
+    user_agent: str = "system"
+) -> None:
+    """
+    Log medical interaction for audit purposes.
     
     Args:
-        level: The minimum log level to record (default: INFO)
-        json_format: Whether to format logs as JSON (default: True)
+        patient_id: Anonymized patient identifier
+        interaction_type: Type of interaction (chat, alert, decision)
+        details: Interaction details for audit
+        user_agent: Source of the interaction
     """
-    # Get the root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
+    medical_logger = get_medical_logger()
     
-    # Remove existing handlers
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
+    audit_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "patient_id": patient_id,
+        "interaction_type": interaction_type,
+        "user_agent": user_agent,
+        "details": details
+    }
     
-    # Create console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
-    
-    # Add our custom filter
-    context_filter = RequestContextFilter()
-    console_handler.addFilter(context_filter)
-    
-    # Set formatter based on preference
-    if json_format:
-        formatter = JSONFormatter()
-    else:
-        formatter = logging.Formatter(
-            '%(isotime)s [%(request_id)s] %(levelname)s %(name)s - %(message)s'
-        )
-    
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
-    
-    # Set specific levels for noisy libraries
-    logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
-    logging.getLogger('uvicorn.error').setLevel(logging.WARNING)
-    logging.getLogger('httpx').setLevel(logging.WARNING)
+    medical_logger.info(f"Medical interaction logged: {audit_entry}")
 
 
-def get_logger(name: str) -> logging.Logger:
+def log_medical_decision(
+    decision_id: str,
+    decision_type: str,
+    input_data: Dict[str, Any],
+    output_data: Dict[str, Any],
+    confidence_score: float = 0.0
+) -> None:
     """
-    Get a logger with the specified name.
+    Log medical AI decisions for audit and safety tracking.
     
     Args:
-        name: The name of the logger, typically __name__
-        
-    Returns:
-        A configured logger instance
+        decision_id: Unique decision identifier
+        decision_type: Type of medical decision made
+        input_data: Input data that led to decision
+        output_data: AI decision output
+        confidence_score: AI confidence in decision
     """
-    return logging.getLogger(name)
-
-
-def set_request_id(request_id: Optional[str] = None) -> str:
-    """
-    Set the current request ID in context.
+    medical_logger = get_medical_logger()
     
-    Args:
-        request_id: The request ID to set, or None to generate a new UUID
-        
-    Returns:
-        The request ID that was set
-    """
-    rid = request_id or str(uuid.uuid4())
-    request_id_context.set(rid)
-    return rid
-
-
-def log_execution_time(logger: Optional[logging.Logger] = None):
-    """
-    Decorator to log the execution time of a function.
+    decision_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "decision_id": decision_id,
+        "decision_type": decision_type,
+        "input_data": input_data,
+        "output_data": output_data,
+        "confidence_score": confidence_score
+    }
     
-    Args:
-        logger: The logger to use, or None to create one based on the function
-    
-    Returns:
-        Decorator function
-    """
-    def decorator(func):
-        nonlocal logger
-        if logger is None:
-            logger = logging.getLogger(func.__module__)
-            
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            start_time = datetime.now()
-            try:
-                result = func(*args, **kwargs)
-                
-                # Calculate execution time
-                execution_time = (datetime.now() - start_time).total_seconds()
-                
-                # Log execution time
-                logger.debug(
-                    f"Function '{func.__name__}' executed in {execution_time:.4f} seconds",
-                    extra={"execution_time": execution_time}
-                )
-                
-                return result
-            except Exception as e:
-                # Log exception with execution time
-                execution_time = (datetime.now() - start_time).total_seconds()
-                logger.exception(
-                    f"Exception in '{func.__name__}' after {execution_time:.4f} seconds: {str(e)}",
-                    extra={"execution_time": execution_time}
-                )
-                raise
-                
-        return wrapper
-    return decorator
+    medical_logger.info(f"Medical decision logged: {decision_entry}")
