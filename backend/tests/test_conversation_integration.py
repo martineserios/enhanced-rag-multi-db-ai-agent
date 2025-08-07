@@ -187,7 +187,8 @@ class TestPerformanceIntegration:
                 'content': 'Quick response',
                 'provider': type('MockProvider', (), {'value': 'openai'})(),
                 'model': 'gpt-4',
-                'medical_validated': True
+                'medical_validated': True,
+                'response_time_ms': 100  # Simulate a non-zero response time
             })()
             
             response = client.post("/api/v1/chat", json={
