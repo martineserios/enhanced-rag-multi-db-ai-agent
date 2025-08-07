@@ -135,7 +135,7 @@ class TestAnthropicProvider:
             capabilities=[ModelCapability.CLINICAL_CONVERSATION],
             medical_validated=True
         )
-    
+        
     @patch('anthropic.Anthropic')
     def test_anthropic_provider_initialization(self, mock_anthropic):
         """Test Anthropic provider initialization."""
@@ -143,6 +143,47 @@ class TestAnthropicProvider:
         
         assert provider.provider_type == ProviderType.ANTHROPIC
         mock_anthropic.assert_called_once_with(api_key="test-key")
+    
+    @patch('anthropic.Anthropic')
+    def test_anthropic_missing_package(self, mock_anthropic):
+        """Test Anthropic provider with missing package."""
+        mock_anthropic.side_effect = ImportError("No module named 'anthropic'")
+        
+        with pytest.raises(ImportError, match="Please install anthropic package"):
+            AnthropicProvider(api_key="test-key", default_config=self.config)
+    
+    @patch('anthropic.Anthropic')
+    async def test_anthropic_generate_response(self, mock_anthropic):
+        """Test Anthropic response generation."""
+        # Mock the Anthropic client response
+        mock_response = Mock()
+        mock_response.content = [Mock()]
+        mock_response.content[0].text = "Test Anthropic response"
+        mock_response.model = "claude-3-sonnet-20240229"
+        mock_response.usage = Mock()
+        mock_response.usage.input_tokens = 10
+        mock_response.usage.output_tokens = 20
+        
+        mock_client = Mock()
+        mock_client.messages.create.return_value = mock_response
+        mock_anthropic.return_value = mock_client
+        
+        provider = AnthropicProvider(api_key="test-key", default_config=self.config)
+        
+        request = LLMRequest(
+            messages=[{"role": "user", "content": "Test question"}],
+            medical_context={
+                "patient_safety_level": "standard",
+                "medical_domain": "obesity_treatment"
+            }
+        )
+        
+        response = await provider.generate_response(request)
+        
+        assert isinstance(response, LLMResponse)
+        assert response.content == "Test Anthropic response"
+        assert response.provider == ProviderType.ANTHROPIC
+        assert response.model == "claude-3-sonnet-20240229"
 
 
 class TestGroqProvider:
@@ -163,6 +204,48 @@ class TestGroqProvider:
         
         assert provider.provider_type == ProviderType.GROQ
         mock_groq.assert_called_once_with(api_key="test-key")
+    
+    @patch('groq.Groq')
+    def test_groq_missing_package(self, mock_groq):
+        """Test Groq provider with missing package."""
+        mock_groq.side_effect = ImportError("No module named 'groq'")
+        
+        with pytest.raises(ImportError, match="Please install groq package"):
+            GroqProvider(api_key="test-key", default_config=self.config)
+    
+    @patch('groq.Groq')
+    async def test_groq_generate_response(self, mock_groq):
+        """Test Groq response generation."""
+        # Mock the Groq client response
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = "Test Groq response"
+        mock_response.model = "llama2-70b-4096"
+        mock_response.usage = Mock()
+        mock_response.usage.prompt_tokens = 10
+        mock_response.usage.completion_tokens = 20
+        mock_response.usage.total_tokens = 30
+        
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_groq.return_value = mock_client
+        
+        provider = GroqProvider(api_key="test-key", default_config=self.config)
+        
+        request = LLMRequest(
+            messages=[{"role": "user", "content": "Test question"}],
+            medical_context={
+                "patient_safety_level": "standard",
+                "medical_domain": "obesity_treatment"
+            }
+        )
+        
+        response = await provider.generate_response(request)
+        
+        assert isinstance(response, LLMResponse)
+        assert response.content == "Test Groq response"
+        assert response.provider == ProviderType.GROQ
+        assert response.model == "llama2-70b-4096"
 
 
 class TestLLMProviderManager:
@@ -230,7 +313,32 @@ class TestLLMProviderManager:
         
         assert response == mock_response
         assert response.medical_validated is True
-    
+
+    async def test_generate_medical_response_with_fallback_failure(self):
+        """Test medical response generation when primary and fallback providers fail."""
+        # Mock both providers to raise exceptions
+        self.openai_provider.generate_response = AsyncMock(side_effect=Exception("OpenAI failed"))
+        self.anthropic_provider.generate_response = AsyncMock(side_effect=Exception("Anthropic failed"))
+
+        self.manager.register_provider(self.openai_provider)
+        self.manager.register_provider(self.anthropic_provider)
+
+        request = LLMRequest(
+            messages=[{"role": "user", "content": "Test question"}]
+        )
+
+        response = await self.manager.generate_medical_response(
+            capability=ModelCapability.CLINICAL_CONVERSATION,
+            request=request,
+            fallback_providers=[ProviderType.ANTHROPIC]
+        )
+
+        assert "Lo siento, no puedo procesar su consulta médica" in response.content
+        assert response.provider == ProviderType.OPENAI  # Default fallback provider
+        assert response.model == "error_fallback"
+        assert response.medical_validated is True
+        assert response.metadata["fallback"] is True
+
     async def test_health_check_all(self):
         """Test health check for all providers."""
         # Mock health check responses
